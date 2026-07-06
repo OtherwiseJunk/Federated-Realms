@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.quest.progress",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "A player's progress on a quest. Stored in the player's PDS and updated by the server.",
+      "record": {
+        "type": "object",
+        "required": ["questId", "serverId", "status", "objectives", "acceptedAt"],
+        "properties": {
+          "questId": { "type": "string", "description": "Quest definition ID" },
+          "serverId": { "type": "string", "description": "DID of the server that issued this quest" },
+          "status": {
+            "type": "string",
+            "description": "Quest status",
+            "knownValues": ["active", "completed", "failed"]
+          },
+          "objectives": {
+            "type": "array",
+            "description": "Progress for each objective, parallel to quest definition objectives",
+            "items": { "type": "ref", "ref": "#objectiveProgress" }
+          },
+          "acceptedAt": { "type": "string", "format": "datetime" },
+          "completedAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "objectiveProgress": {
+      "type": "object",
+      "required": ["current", "required", "done"],
+      "properties": {
+        "current": { "type": "integer" },
+        "required": { "type": "integer" },
+        "done": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.world.room",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "A room in the game world",
+      "record": {
+        "type": "object",
+        "required": ["title", "description", "area", "coordinates"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 256 },
+          "description": { "type": "string", "maxLength": 8192 },
+          "area": { "type": "string" },
+          "coordinates": { "type": "ref", "ref": "#coordinates" },
+          "exits": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "#exit" },
+            "maxLength": 12
+          },
+          "flags": {
+            "type": "array",
+            "description": "Room flags. Base conventions: safe, pvp, no-magic, dark, underwater, no-recall. Servers can define custom flags via com.cacheblasters.realms.world.flag records.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "coordinates": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "z": { "type": "integer" }
+      }
+    },
+    "exit": {
+      "type": "object",
+      "required": ["direction", "target"],
+      "properties": {
+        "direction": {
+          "type": "string",
+          "knownValues": ["north", "south", "east", "west", "up", "down", "northeast", "northwest", "southeast", "southwest"]
+        },
+        "target": { "type": "string" },
+        "portal": { "type": "boolean" },
+        "requiredLevel": { "type": "integer" },
+        "description": { "type": "string", "maxLength": 512 }
+      }
+    }
+  }
+}

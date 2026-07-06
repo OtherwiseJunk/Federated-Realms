@@ -220,16 +220,19 @@ export function App() {
       // OAuth sign-in flow: new character needed after OAuth
       (async () => {
         try {
-          const res = await fetch(`${serverUrl}/xrpc/com.cacheblasters.fm.action.createCharacter`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              did: authDid,
-              name: playerName || account.handle,
-              classId: finalClass,
-              raceId: finalRace,
-            }),
-          });
+          const res = await fetch(
+            `${serverUrl}/xrpc/com.cacheblasters.realms.action.createCharacter`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                did: authDid,
+                name: playerName || account.handle,
+                classId: finalClass,
+                raceId: finalRace,
+              }),
+            },
+          );
           if (!res.ok) throw new Error("Character creation failed");
           const data = (await res.json()) as {
             sessionId: string;

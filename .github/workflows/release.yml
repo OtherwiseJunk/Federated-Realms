@@ -102,7 +102,7 @@ jobs:
           Architecture: amd64
           Maintainer: Federated Realms <noreply@cacheblasters.com>
           Description: Federated MUD client built on the AT Protocol
-           A terminal-based MUD client for Federated Realms dungeon servers.
+           A terminal-based MUD client for Federated Realms servers.
            Connect to any Federated Realms server and explore, fight, and
            adventure with other players in a federated game world.
           EOF

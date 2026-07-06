@@ -25,7 +25,7 @@ services:
       timeout: 5s
       start_period: 10s
 
-  dungeon-server:
+  realms-server:
     build: .
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
@@ -44,7 +44,7 @@ services:
       - PDS_URL=http://pds:3000
       - PDS_HOSTNAME=${PDS_HOSTNAME:-localhost}
       - SERVER_DID=${SERVER_DID:-}
-      - SERVER_HANDLE=${SERVER_HANDLE:-dungeon-server.test}
+      - SERVER_HANDLE=${SERVER_HANDLE:-federated-realms.test}
       - SERVER_PASSWORD=${SERVER_PASSWORD:-}
       # OAuth
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:${PORT:-3000}}
@@ -68,18 +68,18 @@ services:
       timeout: 5s
       start_period: 10s
 
-  web-client:
+  realms-web:
     build:
       context: .
       dockerfile: apps/web-client/Dockerfile
     ports:
       - "${WEB_PORT:-8080}:8080"
     depends_on:
-      dungeon-server:
+      realms-server:
         condition: service_healthy
     environment:
       - PORT=8080
-      - API_URL=http://dungeon-server:${PORT:-3000}
+      - API_URL=http://realms-server:${PORT:-3000}
     restart: unless-stopped
 
 volumes:

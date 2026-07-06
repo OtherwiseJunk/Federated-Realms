@@ -1,0 +1,23 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.system.attribute",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "Defines a character attribute that this server uses. Record key is the attribute ID (e.g. 'str', 'luck', 'sanity').",
+      "record": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 64, "description": "Display name, e.g. 'Strength'" },
+          "description": { "type": "string", "maxLength": 512 },
+          "min": { "type": "integer", "description": "Minimum value (default 1)" },
+          "max": { "type": "integer", "description": "Maximum value (default 999)" },
+          "defaultValue": { "type": "integer", "description": "Default value for new characters" },
+          "category": { "type": "string", "description": "Grouping category, e.g. 'physical', 'mental', 'social'" }
+        }
+      }
+    }
+  }
+}

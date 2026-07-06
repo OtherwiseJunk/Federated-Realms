@@ -1,0 +1,39 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.chat.locatePlayer",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Check if a player is currently online on this server",
+      "parameters": {
+        "type": "params",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Character name to look up"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["found"],
+          "properties": {
+            "found": {
+              "type": "boolean",
+              "description": "Whether the player is online on this server"
+            },
+            "playerDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the player if found"
+            }
+          }
+        }
+      }
+    }
+  }
+}

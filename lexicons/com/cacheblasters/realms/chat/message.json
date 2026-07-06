@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.chat.message",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Offline chat message stored in server PDS for delivery when recipient logs in",
+      "record": {
+        "type": "object",
+        "required": ["senderDid", "senderName", "recipientDid", "message", "sourceServer", "createdAt"],
+        "properties": {
+          "senderDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the sending player"
+          },
+          "senderName": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Character name of the sender"
+          },
+          "recipientDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the recipient player"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The chat message content"
+          },
+          "sourceServer": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the server where the message was sent from"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

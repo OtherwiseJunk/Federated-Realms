@@ -20,53 +20,53 @@ export type ItemProperties = Record<string, unknown>;
 
 // ── Imports from generated types ──
 
-import type { Main as _CharacterProfile } from "./lexicons/com/cacheblasters/fm/character/profile.defs.js";
-import type { Main as _AttributeDef } from "./lexicons/com/cacheblasters/fm/system/attribute.defs.js";
-import type { Main as _ClassDef } from "./lexicons/com/cacheblasters/fm/system/class.defs.js";
-import type { Main as _SpellDef } from "./lexicons/com/cacheblasters/fm/system/spell.defs.js";
-import type { Main as _RaceDef } from "./lexicons/com/cacheblasters/fm/system/race.defs.js";
-import type { Main as _EquipSlotDef } from "./lexicons/com/cacheblasters/fm/system/equipSlot.defs.js";
+import type { Main as _CharacterProfile } from "./lexicons/com/cacheblasters/realms/character/profile.defs.js";
+import type { Main as _AttributeDef } from "./lexicons/com/cacheblasters/realms/system/attribute.defs.js";
+import type { Main as _ClassDef } from "./lexicons/com/cacheblasters/realms/system/class.defs.js";
+import type { Main as _SpellDef } from "./lexicons/com/cacheblasters/realms/system/spell.defs.js";
+import type { Main as _RaceDef } from "./lexicons/com/cacheblasters/realms/system/race.defs.js";
+import type { Main as _EquipSlotDef } from "./lexicons/com/cacheblasters/realms/system/equipSlot.defs.js";
 import type {
   Main as _ItemTypeDef,
   PropertyDef as _PropertyDef,
-} from "./lexicons/com/cacheblasters/fm/system/itemType.defs.js";
-import type { Main as _FormulaDef } from "./lexicons/com/cacheblasters/fm/system/formula.defs.js";
+} from "./lexicons/com/cacheblasters/realms/system/itemType.defs.js";
+import type { Main as _FormulaDef } from "./lexicons/com/cacheblasters/realms/system/formula.defs.js";
 import type {
   Main as _RoomRecord,
   Exit as _RoomExit,
   Coordinates as _Coordinates,
-} from "./lexicons/com/cacheblasters/fm/world/room.defs.js";
+} from "./lexicons/com/cacheblasters/realms/world/room.defs.js";
 import type {
   Main as _AreaRecord,
   LevelRange,
-} from "./lexicons/com/cacheblasters/fm/world/area.defs.js";
-import type { Main as _ServerRecord } from "./lexicons/com/cacheblasters/fm/world/server.defs.js";
+} from "./lexicons/com/cacheblasters/realms/world/area.defs.js";
+import type { Main as _ServerRecord } from "./lexicons/com/cacheblasters/realms/world/server.defs.js";
 import type {
   Main as _FlagRecord,
   FlagEffect as _FlagEffect,
-} from "./lexicons/com/cacheblasters/fm/world/flag.defs.js";
-import type { Main as _ItemDefinition } from "./lexicons/com/cacheblasters/fm/item/definition.defs.js";
-import type { Main as _NpcDefinition } from "./lexicons/com/cacheblasters/fm/npc/definition.defs.js";
+} from "./lexicons/com/cacheblasters/realms/world/flag.defs.js";
+import type { Main as _ItemDefinition } from "./lexicons/com/cacheblasters/realms/item/definition.defs.js";
+import type { Main as _NpcDefinition } from "./lexicons/com/cacheblasters/realms/npc/definition.defs.js";
 import type {
   Main as _QuestDefinition,
   Objective as _QuestObjective,
   Rewards as _QuestRewards,
-} from "./lexicons/com/cacheblasters/fm/quest/definition.defs.js";
+} from "./lexicons/com/cacheblasters/realms/quest/definition.defs.js";
 import type {
   Main as _QuestProgress,
   ObjectiveProgress as _QuestObjectiveProgress,
-} from "./lexicons/com/cacheblasters/fm/quest/progress.defs.js";
+} from "./lexicons/com/cacheblasters/realms/quest/progress.defs.js";
 import type {
   Main as _RecipeDef,
   Ingredient as _RecipeIngredient,
   Output as _RecipeOutput,
-} from "./lexicons/com/cacheblasters/fm/craft/recipe.defs.js";
+} from "./lexicons/com/cacheblasters/realms/craft/recipe.defs.js";
 import type {
   Main as _FederationRegistration,
   LevelRange as _FedLevelRange,
-} from "./lexicons/com/cacheblasters/fm/federation/registration.defs.js";
-import type { Main as _PortalRecord } from "./lexicons/com/cacheblasters/fm/world/portal.defs.js";
-import type { Main as _ChatMessage } from "./lexicons/com/cacheblasters/fm/chat/message.defs.js";
+} from "./lexicons/com/cacheblasters/realms/federation/registration.defs.js";
+import type { Main as _PortalRecord } from "./lexicons/com/cacheblasters/realms/world/portal.defs.js";
+import type { Main as _ChatMessage } from "./lexicons/com/cacheblasters/realms/chat/message.defs.js";
 
 // ── Character ──
 
@@ -132,14 +132,14 @@ export type RoomExit = Omit<_RoomExit, "$type" | "direction"> & {
   direction: Direction;
 };
 
-export type { Coordinates as RoomCoordinates } from "./lexicons/com/cacheblasters/fm/world/room.defs.js";
+export type { Coordinates as RoomCoordinates } from "./lexicons/com/cacheblasters/realms/world/room.defs.js";
 
 export type RoomRecord = Omit<_RoomRecord, "$type" | "exits"> & {
   $type?: string;
   exits?: RoomExit[];
 };
 
-export type { LevelRange } from "./lexicons/com/cacheblasters/fm/world/area.defs.js";
+export type { LevelRange } from "./lexicons/com/cacheblasters/realms/world/area.defs.js";
 
 export type AreaRecord = Omit<_AreaRecord, "$type"> & { $type?: string };
 
@@ -256,48 +256,48 @@ export type RecipeDef = Omit<_RecipeDef, "$type" | "ingredients" | "output"> & {
 
 export const NSID = {
   // Character
-  CharacterProfile: "com.cacheblasters.fm.character.profile",
+  CharacterProfile: "com.cacheblasters.realms.character.profile",
 
   // System schema
-  SystemAttribute: "com.cacheblasters.fm.system.attribute",
-  SystemClass: "com.cacheblasters.fm.system.class",
-  SystemRace: "com.cacheblasters.fm.system.race",
-  SystemSpell: "com.cacheblasters.fm.system.spell",
-  SystemEquipSlot: "com.cacheblasters.fm.system.equipSlot",
-  SystemItemType: "com.cacheblasters.fm.system.itemType",
-  SystemFormula: "com.cacheblasters.fm.system.formula",
+  SystemAttribute: "com.cacheblasters.realms.system.attribute",
+  SystemClass: "com.cacheblasters.realms.system.class",
+  SystemRace: "com.cacheblasters.realms.system.race",
+  SystemSpell: "com.cacheblasters.realms.system.spell",
+  SystemEquipSlot: "com.cacheblasters.realms.system.equipSlot",
+  SystemItemType: "com.cacheblasters.realms.system.itemType",
+  SystemFormula: "com.cacheblasters.realms.system.formula",
 
   // World
-  WorldServer: "com.cacheblasters.fm.world.server",
-  WorldArea: "com.cacheblasters.fm.world.area",
-  WorldRoom: "com.cacheblasters.fm.world.room",
-  WorldFlag: "com.cacheblasters.fm.world.flag",
-  WorldPortal: "com.cacheblasters.fm.world.portal",
+  WorldServer: "com.cacheblasters.realms.world.server",
+  WorldArea: "com.cacheblasters.realms.world.area",
+  WorldRoom: "com.cacheblasters.realms.world.room",
+  WorldFlag: "com.cacheblasters.realms.world.flag",
+  WorldPortal: "com.cacheblasters.realms.world.portal",
 
   // Items
-  ItemDefinition: "com.cacheblasters.fm.item.definition",
+  ItemDefinition: "com.cacheblasters.realms.item.definition",
 
   // NPCs
-  NpcDefinition: "com.cacheblasters.fm.npc.definition",
+  NpcDefinition: "com.cacheblasters.realms.npc.definition",
 
   // Quests
-  QuestDefinition: "com.cacheblasters.fm.quest.definition",
-  QuestProgress: "com.cacheblasters.fm.quest.progress",
+  QuestDefinition: "com.cacheblasters.realms.quest.definition",
+  QuestProgress: "com.cacheblasters.realms.quest.progress",
 
   // Crafting
-  CraftRecipe: "com.cacheblasters.fm.craft.recipe",
+  CraftRecipe: "com.cacheblasters.realms.craft.recipe",
 
   // Chat
-  ChatMessage: "com.cacheblasters.fm.chat.message",
-  ChatRelay: "com.cacheblasters.fm.chat.relay",
-  ChatLocatePlayer: "com.cacheblasters.fm.chat.locatePlayer",
+  ChatMessage: "com.cacheblasters.realms.chat.message",
+  ChatRelay: "com.cacheblasters.realms.chat.relay",
+  ChatLocatePlayer: "com.cacheblasters.realms.chat.locatePlayer",
 
   // Federation
-  FederationRegistration: "com.cacheblasters.fm.federation.registration",
-  FederationTransfer: "com.cacheblasters.fm.federation.transfer",
+  FederationRegistration: "com.cacheblasters.realms.federation.registration",
+  FederationTransfer: "com.cacheblasters.realms.federation.transfer",
 
   // Actions
-  ActionConnect: "com.cacheblasters.fm.action.connect",
+  ActionConnect: "com.cacheblasters.realms.action.connect",
 } as const;
 
 // ── Re-export generated namespace for direct access ──

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap-pds.sh — Set up a local PDS + dungeon server for development
+# bootstrap-pds.sh — Set up a local PDS + realms server for development
 #
 # Usage:
 #   ./scripts/bootstrap-pds.sh              # Interactive setup
@@ -97,7 +97,7 @@ SERVER_NAME=$(prompt_or_default "SERVER_NAME" "Server name" "Federated Realms")
 SERVER_DESCRIPTION=$(prompt_or_default "SERVER_DESCRIPTION" "Server description" "A mysterious dungeon awaits...")
 # PDS uses .test domain when hostname is localhost
 if [[ "$PDS_HOSTNAME" == "localhost" ]]; then
-  DEFAULT_HANDLE="dungeon-server.test"
+  DEFAULT_HANDLE="federated-realms.test"
 else
   DEFAULT_HANDLE="gameserver.${PDS_HOSTNAME}"
 fi
@@ -321,8 +321,8 @@ echo -e "  Public URL:     ${CYAN}${PUBLIC_URL}${NC}"
 echo -e "  Trust Policy:   ${CYAN}${TRUST_POLICY}${NC}"
 echo ""
 echo -e "  ${YELLOW}Next steps:${NC}"
-echo -e "    1. Start the dungeon server:"
-echo -e "       ${CYAN}cd apps/dungeon-server && bun run src/index.ts${NC}"
+echo -e "    1. Start the realms server:"
+echo -e "       ${CYAN}cd apps/realms-server && bun run src/index.ts${NC}"
 echo -e "    2. Or start everything with Docker:"
 echo -e "       ${CYAN}docker compose up${NC}"
 echo -e "    3. Connect with the CLI client:"

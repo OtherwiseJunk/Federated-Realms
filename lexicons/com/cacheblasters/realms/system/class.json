@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.system.class",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "Defines a character class. Record key is the class ID (e.g. 'warrior', 'hacker').",
+      "record": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 64 },
+          "description": { "type": "string", "maxLength": 2048 },
+          "baseAttributes": {
+            "type": "unknown",
+            "description": "Map of attribute ID -> base value, e.g. { 'str': 14, 'dex': 10 }"
+          },
+          "attributeBonuses": {
+            "type": "unknown",
+            "description": "Map of attribute ID -> bonus value added to race/default base"
+          },
+          "spells": {
+            "type": "array",
+            "description": "Spell IDs this class has access to",
+            "items": { "type": "string" }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Descriptive tags, e.g. ['melee', 'tank'] or ['caster', 'healer']"
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ COPY packages/common/package.json packages/common/
 COPY packages/atproto/package.json packages/atproto/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/client-common/package.json packages/client-common/
-COPY apps/dungeon-server/package.json apps/dungeon-server/
+COPY apps/realms-server/package.json apps/realms-server/
 COPY apps/cli-client/package.json apps/cli-client/
 COPY apps/web-client/package.json apps/web-client/
 
@@ -32,7 +32,7 @@ COPY --from=build --chown=appuser:appgroup /app/apps/web-client/dist ./dist
 COPY --from=build --chown=appuser:appgroup /app/apps/web-client/serve.ts ./serve.ts
 
 ENV PORT=8080
-ENV API_URL=http://dungeon-server:3000
+ENV API_URL=http://realms-server:3000
 
 EXPOSE 8080
 

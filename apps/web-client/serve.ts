@@ -1,10 +1,10 @@
 /**
- * Static file server for the web client with reverse proxy to the dungeon server.
+ * Static file server for the web client with reverse proxy to the realms server.
  * Used in Docker to serve the built Vite assets and proxy API/WS requests.
  */
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
-const API_URL = process.env.API_URL || "http://dungeon-server:3000";
+const API_URL = process.env.API_URL || "http://realms-server:3000";
 const DIST_DIR = new URL("./dist", import.meta.url).pathname;
 
 const PROXY_PREFIXES = ["/ws", "/info", "/health", "/system", "/auth", "/oauth", "/xrpc"];
@@ -24,7 +24,7 @@ const server = Bun.serve({
 
     // WebSocket upgrade for /ws
     if (url.pathname === "/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      // Proxy WebSocket to dungeon server
+      // Proxy WebSocket to realms server
       const target = `${API_URL.replace(/^http/, "ws")}${url.pathname}${url.search}`;
       const upstream = new WebSocket(target);
       const success = server.upgrade(req, { data: { upstream } });
@@ -35,7 +35,7 @@ const server = Bun.serve({
       return undefined;
     }
 
-    // Proxy API requests to dungeon server
+    // Proxy API requests to realms server
     if (shouldProxy(url.pathname)) {
       const target = `${API_URL}${url.pathname}${url.search}`;
       const proxyRes = await fetch(target, {

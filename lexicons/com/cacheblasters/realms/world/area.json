@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.world.area",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "An area grouping rooms in a Federated Realms server",
+      "record": {
+        "type": "object",
+        "required": ["title", "description"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 4096 },
+          "levelRange": { "type": "ref", "ref": "#levelRange" }
+        }
+      }
+    },
+    "levelRange": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "integer" },
+        "max": { "type": "integer" }
+      }
+    }
+  }
+}

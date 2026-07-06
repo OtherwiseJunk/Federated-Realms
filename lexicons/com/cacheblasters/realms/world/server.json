@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.world.server",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:self",
+      "description": "Federated Realms server metadata",
+      "record": {
+        "type": "object",
+        "required": ["name", "description", "endpoint", "createdAt"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 4096 },
+          "endpoint": { "type": "string", "format": "uri" },
+          "xrpcEndpoint": { "type": "string", "format": "uri" },
+          "minLevel": { "type": "integer", "minimum": 1 },
+          "maxLevel": { "type": "integer", "minimum": 1 },
+          "theme": { "type": "string", "maxLength": 256 },
+          "maxPlayers": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

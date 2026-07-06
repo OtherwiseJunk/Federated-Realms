@@ -1,0 +1,79 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.federation.registration",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "literal:self",
+      "description": "Server registration record published to the AT Proto network for discovery by other federated servers",
+      "record": {
+        "type": "object",
+        "required": ["serverDid", "name", "endpoint", "createdAt"],
+        "properties": {
+          "serverDid": {
+            "type": "string",
+            "format": "did",
+            "description": "The server's AT Proto DID"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Human-readable server name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Server description"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "WebSocket endpoint for gameplay connections"
+          },
+          "xrpcEndpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "XRPC endpoint for federation handshakes"
+          },
+          "levelRange": {
+            "type": "ref",
+            "ref": "#levelRange",
+            "description": "Recommended level range for this server"
+          },
+          "trustPolicy": {
+            "type": "string",
+            "knownValues": ["trust-all", "trust-listed", "trust-none", "trust-level-cap"],
+            "description": "How this server handles incoming character data"
+          },
+          "portalCount": {
+            "type": "integer",
+            "description": "Number of outbound portals to other servers"
+          },
+          "signingKey": {
+            "type": "string",
+            "description": "Base64url-encoded secp256k1 public key bytes used for attestation signatures and transfer JWTs"
+          },
+          "playerCount": {
+            "type": "integer",
+            "description": "Current number of connected players (updated periodically)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    },
+    "levelRange": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "integer", "minimum": 1 },
+        "max": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

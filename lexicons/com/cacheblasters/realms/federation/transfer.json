@@ -1,0 +1,49 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.federation.transfer",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Request character transfer from source to target server via portal traversal",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["token", "character"],
+          "properties": {
+            "token": {
+              "type": "string",
+              "description": "JWT signed by source server with transfer claims"
+            },
+            "character": {
+              "type": "unknown",
+              "description": "Full character profile snapshot"
+            },
+            "attestations": {
+              "type": "unknown",
+              "description": "Array of signed attestations from previous servers"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["accepted"],
+          "properties": {
+            "accepted": { "type": "boolean" },
+            "sessionId": { "type": "string" },
+            "websocketUrl": { "type": "string", "format": "uri" },
+            "spawnRoom": { "type": "string" },
+            "serverName": { "type": "string" },
+            "reason": {
+              "type": "string",
+              "description": "Rejection reason if accepted is false"
+            }
+          }
+        }
+      }
+    }
+  }
+}

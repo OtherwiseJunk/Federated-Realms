@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "com.cacheblasters.realms.npc.definition",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "An NPC definition template. Servers define NPC behavior via the behavior field and dialogue trees.",
+      "record": {
+        "type": "object",
+        "required": ["name", "description", "behavior"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 4096 },
+          "behavior": {
+            "type": "string",
+            "description": "NPC behavior archetype",
+            "knownValues": ["hostile", "merchant", "questgiver", "wanderer", "static"]
+          },
+          "level": { "type": "integer", "minimum": 1 },
+          "attributes": {
+            "type": "unknown",
+            "description": "Open map of attribute ID -> value, using server's attribute schema"
+          },
+          "dialogue": {
+            "type": "unknown",
+            "description": "Dialogue tree structure — server-defined format"
+          },
+          "art": {
+            "type": "array",
+            "description": "ASCII art lines displayed during combat",
+            "items": { "type": "string" }
+          },
+          "shop": {
+            "type": "array",
+            "description": "Item definition IDs this merchant sells (merchant NPCs only)",
+            "items": { "type": "string" }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
