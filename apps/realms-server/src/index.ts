@@ -1,11 +1,24 @@
-import { loadConfig } from "./config.js";
-import { SqliteSimpleStore } from "./atproto/sqlite-stores.js";
-import { AuthTokenStore } from "./atproto/auth-token-store.js";
-import { WorldManager } from "./world/world-manager.js";
-import { SessionManager } from "./server/session-manager.js";
-import { openStateDatabase } from "./server/state-db.js";
-import { type SessionData } from "./entities/character-session.js";
-import { parseCommand } from "@realms/common";
+import {
+  loadConfig,
+  SqliteSimpleStore,
+  AuthTokenStore,
+  WorldManager,
+  SessionManager,
+  openStateDatabase,
+  type SessionData,
+  BlueskyBridge,
+  CombatSystem,
+  ServerIdentity,
+  GameOAuthClient,
+  PdsClient,
+  PortalHandler,
+  TransferHandler,
+  WorldPublisher,
+  FederationManager,
+  ChatRelayService,
+  RateLimiter,
+} from "@realms/server-sdk";
+import { parseCommand, buildAttributes, computeDerivedStats, xpToNextLevel } from "@realms/common";
 import { encodeMessage, decodeClientMessage, type ServerMessage } from "@realms/protocol";
 import {
   handleCommand,
@@ -15,21 +28,9 @@ import {
   type CommandContext,
 } from "./commands/index.js";
 import type { CharacterProfile } from "@realms/lexicons";
-import { buildAttributes, computeDerivedStats, xpToNextLevel } from "@realms/common";
-import { BlueskyBridge } from "./bluesky/bridge.js";
-import { CombatSystem } from "./systems/combat-system.js";
-import { ServerIdentity } from "./atproto/server-identity.js";
-import { GameOAuthClient } from "./atproto/oauth.js";
-import { PdsClient } from "./atproto/pds-client.js";
-import { PortalHandler } from "./federation/portal-handler.js";
-import { TransferHandler } from "./federation/transfer-handler.js";
-import { WorldPublisher } from "./atproto/world-publisher.js";
-import { FederationManager } from "./federation/federation-manager.js";
-import { ChatRelayService } from "./federation/chat-relay.js";
-import { RateLimiter } from "./server/rate-limiter.js";
 import { OAuthCallbackError } from "@atproto/oauth-client-node";
 
-const config = loadConfig();
+const config = loadConfig(decodeURIComponent(new URL("../data", import.meta.url).pathname));
 
 // Mutable server state (auth tokens, OAuth sessions) — survives restarts
 const stateDb = openStateDatabase(config.dataDir);

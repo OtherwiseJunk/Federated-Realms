@@ -1,4 +1,5 @@
 import { type ParsedCommand, AP_COST } from "@realms/common";
+import type { CharacterSession } from "@realms/server-sdk";
 import type { CommandContext } from "./index.js";
 import { sendNarrative } from "./index.js";
 
@@ -91,10 +92,7 @@ export function handleCombat(cmd: ParsedCommand, ctx: CommandContext): void {
   }
 }
 
-function showSpells(
-  session: import("../entities/character-session.js").CharacterSession,
-  ctx: CommandContext,
-): void {
+function showSpells(session: CharacterSession, ctx: CommandContext): void {
   const system = ctx.world.gameSystem;
   const classDef = system.classes[session.state.class];
   const spellIds = classDef?.spells ?? [];

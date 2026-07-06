@@ -1,11 +1,13 @@
 import type { ParsedCommand } from "@realms/common";
-import type { CharacterSession } from "../entities/character-session.js";
-import type { WorldManager } from "../world/world-manager.js";
-import type { SessionManager } from "../server/session-manager.js";
-import type { BlueskyBridge } from "../bluesky/bridge.js";
-import type { CombatSystem } from "../systems/combat-system.js";
-import type { PortalHandler } from "../federation/portal-handler.js";
-import type { ChatRelayService } from "../federation/chat-relay.js";
+import type {
+  CharacterSession,
+  WorldManager,
+  SessionManager,
+  BlueskyBridge,
+  CombatSystem,
+  PortalHandler,
+  ChatRelayService,
+} from "@realms/server-sdk";
 import { handleMovement } from "./movement.js";
 import { handleLook, handleTalk } from "./interaction.js";
 import { handleSocial, handleTell } from "./social.js";

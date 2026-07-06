@@ -3,7 +3,7 @@ import { encodeMessage } from "@realms/protocol";
 import { xpToNextLevel, createItemInstance } from "@realms/common";
 import type { CommandContext } from "./index.js";
 import { sendNarrative } from "./index.js";
-import type { QuestManager } from "../systems/quest-manager.js";
+import type { QuestManager } from "@realms/server-sdk";
 
 export function handleQuest(cmd: ParsedCommand, ctx: CommandContext): void {
   const sub = (cmd.args[0] ?? "").toLowerCase();

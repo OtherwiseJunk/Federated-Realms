@@ -8,6 +8,7 @@ COPY packages/common/package.json packages/common/
 COPY packages/atproto/package.json packages/atproto/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/client-common/package.json packages/client-common/
+COPY packages/server-sdk/package.json packages/server-sdk/
 COPY apps/realms-server/package.json apps/realms-server/
 COPY apps/cli-client/package.json apps/cli-client/
 COPY apps/web-client/package.json apps/web-client/

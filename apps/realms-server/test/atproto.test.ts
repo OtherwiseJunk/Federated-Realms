@@ -1,9 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
 import { TestClient, startServer, stopServer } from "./helpers.ts";
-import { ServerIdentity } from "../src/atproto/server-identity.ts";
-import { AttestationTracker } from "../src/atproto/attestation-tracker.ts";
-import { PortalHandler } from "../src/federation/portal-handler.ts";
+import { ServerIdentity, AttestationTracker, PortalHandler } from "@realms/server-sdk";
 
 // ── Server in dev mode (AT Proto endpoints still respond) ──
 
