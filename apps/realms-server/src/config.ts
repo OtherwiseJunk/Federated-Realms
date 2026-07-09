@@ -26,6 +26,8 @@ export interface AtProtoConfig {
   serverHandle: string;
   serverPassword: string;
   publicUrl: string;
+  /** Publicly reachable PDS URL — used as OAuth input for the signup flow. */
+  pdsPublicUrl: string;
 }
 
 export interface FederationConfig {
@@ -42,6 +44,8 @@ export interface ServerConfig {
   tickRate: number;
   defaultSpawnRoom: string;
   dataPath: string;
+  /** Directory for mutable server state (SQLite DB). Distinct from dataPath (world data). */
+  dataDir: string;
   bluesky: BlueskyConfig;
   atproto: AtProtoConfig;
   federation: FederationConfig;
@@ -57,6 +61,7 @@ export function loadConfig(): ServerConfig {
     defaultSpawnRoom: process.env.DEFAULT_SPAWN ?? "starter-town:town-square",
     dataPath:
       process.env.DATA_PATH ?? decodeURIComponent(new URL("../data", import.meta.url).pathname),
+    dataDir: process.env.DATA_DIR ?? "./.state",
     bluesky: {
       enabled: process.env.BSKY_ENABLED === "true",
       identifier: process.env.BSKY_IDENTIFIER ?? "",
@@ -75,6 +80,11 @@ export function loadConfig(): ServerConfig {
         process.env.SERVER_HANDLE ?? `server.${process.env.PDS_HOSTNAME ?? "localhost"}`,
       serverPassword: process.env.SERVER_PASSWORD ?? "",
       publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? "3000"}`,
+      pdsPublicUrl:
+        process.env.PDS_PUBLIC_URL ??
+        ((process.env.PDS_HOSTNAME ?? "localhost") !== "localhost"
+          ? `https://${process.env.PDS_HOSTNAME}`
+          : (process.env.PDS_URL ?? "http://localhost:2583")),
     },
     federation: {
       trustPolicy: parseTrustPolicy(process.env.TRUST_POLICY ?? "trust-listed"),
