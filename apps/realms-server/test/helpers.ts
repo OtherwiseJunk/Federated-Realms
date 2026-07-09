@@ -1,5 +1,5 @@
 import type { Subprocess } from "bun";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decodeServerMessage, type ServerMessage } from "@realms/protocol";
@@ -178,6 +178,9 @@ export class TestClient {
   }
 }
 
+/** Temp state dirs per spawned server, removed in stopServer */
+const serverDataDirs = new Map<Subprocess, string>();
+
 /** Start the realms server on a random port */
 export async function startServer(opts?: {
   devMode?: boolean;
@@ -210,7 +213,10 @@ export async function startServer(opts?: {
   while (Date.now() - start < 10000) {
     try {
       const res = await fetch(healthUrl);
-      if (res.ok) return { port, process: proc };
+      if (res.ok) {
+        serverDataDirs.set(proc, dataDir);
+        return { port, process: proc };
+      }
     } catch {
       // not ready yet
     }
@@ -218,10 +224,24 @@ export async function startServer(opts?: {
   }
 
   proc.kill();
+  try {
+    rmSync(dataDir, { recursive: true, force: true });
+  } catch {
+    // Cleanup failure must not mask the startup error
+  }
   throw new Error(`Server failed to start on port ${port}`);
 }
 
 /** Stop the server */
 export function stopServer(proc: Subprocess): void {
   proc.kill();
+  const dataDir = serverDataDirs.get(proc);
+  serverDataDirs.delete(proc);
+  if (dataDir) {
+    try {
+      rmSync(dataDir, { recursive: true, force: true });
+    } catch {
+      // Cleanup failure must not mask test results
+    }
+  }
 }
