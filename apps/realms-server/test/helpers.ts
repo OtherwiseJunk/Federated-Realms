@@ -1,4 +1,7 @@
 import type { Subprocess } from "bun";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { decodeServerMessage, type ServerMessage } from "@realms/protocol";
 import { parseCommand } from "@realms/common";
 import { encodeMessage, type ClientMessage } from "@realms/protocol";
@@ -183,6 +186,9 @@ export async function startServer(opts?: {
   const port = 10000 + Math.floor(Math.random() * 50000);
   const serverPath = decodeURIComponent(new URL("../src/index.ts", import.meta.url).pathname);
   const devMode = opts?.devMode ?? true;
+  // Each spawned server gets its own SQLite state dir so concurrent test
+  // servers don't collide on the same realms.db file.
+  const dataDir = mkdtempSync(join(tmpdir(), "realms-test-"));
 
   const proc = Bun.spawn(["bun", "run", serverPath], {
     env: {
@@ -191,6 +197,7 @@ export async function startServer(opts?: {
       HOST: "127.0.0.1",
       BLUESKY_ENABLED: "false",
       DEV_MODE: devMode ? "true" : "false",
+      DATA_DIR: dataDir,
       ...opts?.env,
     },
     stdout: "pipe",

@@ -1,4 +1,8 @@
+import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
 import { loadConfig } from "./config.js";
+import { SqliteSimpleStore } from "./atproto/sqlite-stores.js";
+import { AuthTokenStore } from "./atproto/auth-token-store.js";
 import { WorldManager } from "./world/world-manager.js";
 import { SessionManager } from "./server/session-manager.js";
 import { type SessionData } from "./entities/character-session.js";
@@ -27,6 +31,11 @@ import { RateLimiter } from "./server/rate-limiter.js";
 
 const config = loadConfig();
 
+// Mutable server state (auth tokens, OAuth sessions) — survives restarts
+mkdirSync(config.dataDir, { recursive: true });
+const stateDb = new Database(`${config.dataDir}/realms.db`);
+const authTokens = new AuthTokenStore(stateDb);
+
 // Rate limiters
 const authLimiter = new RateLimiter(10, 60_000); // 10 auth attempts per minute per IP
 const accountLimiter = new RateLimiter(3, 60_000); // 3 account creations per minute per IP
@@ -48,6 +57,7 @@ interface PendingLogin {
   sessionId?: string;
   websocketUrl?: string;
   did?: string;
+  authToken?: string;
   needsCharacter?: boolean;
   gameSystem?: unknown;
   error?: string;
@@ -81,7 +91,10 @@ await bluesky.initialize();
 if (!DEV_MODE && config.atproto.serverPassword) {
   try {
     await serverIdentity.initialize(config.atproto, config.name, config.description);
-    await oauthClient.initialize(config.atproto);
+    await oauthClient.initialize(config.atproto, {
+      stateStore: new SqliteSimpleStore(stateDb, "oauth_state"),
+      sessionStore: new SqliteSimpleStore(stateDb, "oauth_session"),
+    });
     sessions.setServerIdentity(serverIdentity);
 
     // Publish world data as AT Proto records
@@ -361,6 +374,7 @@ const server = Bun.serve<SessionData>({
           sessionId: login.sessionId,
           websocketUrl: login.websocketUrl,
           did: login.did,
+          authToken: login.authToken,
           needsCharacter: login.needsCharacter,
           gameSystem: login.gameSystem,
         });
@@ -372,6 +386,7 @@ const server = Bun.serve<SessionData>({
         try {
           const { session: oauthSession, agent } = await oauthClient.callback(url.searchParams);
           const did = oauthSession.did;
+          const authToken = authTokens.issue(did);
 
           // Check if player has a character on this server
           const existingProfile = await pdsClient.loadCharacter(agent, did);
@@ -388,6 +403,7 @@ const server = Bun.serve<SessionData>({
               websocketUrl: `${config.atproto.publicUrl.replace(/^http/, "ws")}/ws?session=${gameSession.sessionId}`,
               spawnRoom: gameSession.currentRoom,
               characterState: gameSession.state,
+              authToken,
             };
 
             // If this came from a CLI polling flow, store result
@@ -398,6 +414,7 @@ const server = Bun.serve<SessionData>({
                 sessionId: result.sessionId,
                 websocketUrl: result.websocketUrl,
                 did,
+                authToken,
               });
               return new Response(
                 authSuccessHtml("Authorization successful! You can return to your terminal."),
@@ -416,6 +433,7 @@ const server = Bun.serve<SessionData>({
               status: "complete",
               createdAt: Date.now(),
               did,
+              authToken,
               needsCharacter: true,
               gameSystem: world.gameSystem,
             });
@@ -432,6 +450,7 @@ const server = Bun.serve<SessionData>({
           return Response.json({
             needsCharacter: true,
             did,
+            authToken,
             gameSystem: world.gameSystem,
           });
         } catch (err) {
