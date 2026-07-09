@@ -25,7 +25,6 @@ export function AccountSetup({ onComplete }: Props) {
   const [phase, setPhase] = useState<SetupPhase>("menu");
   const [menuIndex, setMenuIndex] = useState(0);
   const [inputValue, setInputValue] = useState("");
-  const [error, setError] = useState("");
 
   const menuItems = [
     { label: "Sign in with existing account", value: "signin" as const },
@@ -69,7 +68,6 @@ export function AccountSetup({ onComplete }: Props) {
       if (phase === "signin") {
         setPhase("menu");
       }
-      setError("");
       return;
     }
 
@@ -145,7 +143,6 @@ export function AccountSetup({ onComplete }: Props) {
       <Text color="gray" dimColor>
         e.g. yourname.bsky.social or yourname.your-server.com
       </Text>
-      {error ? <Text color="red">{error}</Text> : null}
       <Box height={1} />
       <Text color="gray" dimColor>
         Esc to go back

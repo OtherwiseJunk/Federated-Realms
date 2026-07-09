@@ -76,6 +76,16 @@ describe("auth endpoints", () => {
     const data = (await res.json()) as Record<string, unknown>;
     expect(data.error).toBeTruthy();
   });
+
+  test("/auth/login?signup=true returns 503 when signup is unavailable", async () => {
+    // In DEV_MODE the OAuth client is never initialized, so signup can't
+    // proceed. This should be a clean 503, not the generic 500 that
+    // authorize() would otherwise throw ("OAuth not initialized").
+    const res = await fetch(`http://127.0.0.1:${devPort}/auth/login?signup=true`);
+    expect(res.status).toBe(503);
+    const data = (await res.json()) as Record<string, unknown>;
+    expect(data.error).toBe("Signup is not available on this server");
+  });
 });
 
 // ─── XRPC Endpoints ─────────────────────────────────────────

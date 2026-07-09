@@ -35,6 +35,8 @@ const config = loadConfig();
 mkdirSync(config.dataDir, { recursive: true });
 const stateDb = new Database(`${config.dataDir}/realms.db`);
 const authTokens = new AuthTokenStore(stateDb);
+authTokens.purgeExpired();
+setInterval(() => authTokens.purgeExpired(), 60 * 60_000); // hourly
 
 // Rate limiters
 const authLimiter = new RateLimiter(10, 60_000); // 10 auth attempts per minute per IP
@@ -64,11 +66,13 @@ interface PendingLogin {
 }
 const pendingLogins = new Map<string, PendingLogin>();
 
-// Clean up stale pending logins every 5 minutes
+// Clean up stale pending logins every 5 minutes. Window is 15 minutes since
+// PDS signup (hCaptcha + email verification) can realistically take longer
+// than 5.
 setInterval(() => {
-  const fiveMinAgo = Date.now() - 5 * 60_000;
+  const fifteenMinAgo = Date.now() - 15 * 60_000;
   for (const [ticket, login] of pendingLogins) {
-    if (login.createdAt < fiveMinAgo) pendingLogins.delete(ticket);
+    if (login.createdAt < fifteenMinAgo) pendingLogins.delete(ticket);
   }
 }, 5 * 60_000);
 
@@ -353,6 +357,12 @@ const server = Bun.serve<SessionData>({
         if (!handle && !signup) {
           return Response.json({ error: "handle parameter required" }, { status: 400 });
         }
+        if (signup && !oauthClient.initialized) {
+          return Response.json(
+            { error: "Signup is not available on this server" },
+            { status: 503 },
+          );
+        }
         try {
           const input = signup ? config.atproto.pdsPublicUrl : handle!;
           const authUrl = await oauthClient.authorize(input);
@@ -410,7 +420,10 @@ const server = Bun.serve<SessionData>({
           // instead of a raw DID (e.g. right after PDS-hosted signup).
           let handle: string | undefined;
           try {
-            const res = await agent.com.atproto.server.getSession();
+            const res = await agent.com.atproto.server.getSession(
+              {},
+              { signal: AbortSignal.timeout(5000) },
+            );
             handle = res.data.handle;
           } catch {
             // handle stays undefined — client falls back to prior/DID

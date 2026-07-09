@@ -57,4 +57,24 @@ describe("AuthTokenStore", () => {
     store.revoke(token);
     expect(store.verify(token)).toBeNull();
   });
+
+  test("purgeExpired deletes expired rows, keeps valid ones, and returns the deleted count", () => {
+    const db = new Database(":memory:");
+    const store = new AuthTokenStore(db);
+    const expiredToken = store.issue("did:plc:alice");
+    const validToken = store.issue("did:plc:bob");
+    db.run("UPDATE auth_tokens SET expires_at = ? WHERE did = ?", [
+      Date.now() - 1000,
+      "did:plc:alice",
+    ]);
+
+    const deleted = store.purgeExpired();
+
+    expect(deleted).toBe(1);
+    const rows = db.query("SELECT did FROM auth_tokens").all() as { did: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].did).toBe("did:plc:bob");
+    expect(store.verify(validToken)).toBe("did:plc:bob");
+    expect(store.verify(expiredToken)).toBeNull();
+  });
 });

@@ -81,9 +81,25 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
   useEffect(() => {
     if (phase !== "waiting" || !ticket) return;
 
+    const pollStart = Date.now();
+    const POLL_TIMEOUT_MS = 15 * 60 * 1000;
+
     const interval = setInterval(async () => {
+      if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+        clearInterval(interval);
+        setError("Login attempt expired. Please try again.");
+        setPhase("error");
+        return;
+      }
+
       try {
         const res = await fetch(`${serverUrl}/auth/poll?ticket=${encodeURIComponent(ticket)}`);
+        if (res.status === 404) {
+          clearInterval(interval);
+          setError("Login attempt expired. Please try again.");
+          setPhase("error");
+          return;
+        }
         if (!res.ok) return;
 
         const data = (await res.json()) as {

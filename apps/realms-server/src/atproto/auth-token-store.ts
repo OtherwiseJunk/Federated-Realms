@@ -56,4 +56,10 @@ export class AuthTokenStore {
   revoke(token: string): void {
     this.db.run(`DELETE FROM auth_tokens WHERE token_hash = ?`, [hashToken(token)]);
   }
+
+  /** Delete all expired tokens. Returns the number of rows removed. */
+  purgeExpired(): number {
+    const result = this.db.run(`DELETE FROM auth_tokens WHERE expires_at < ?`, [Date.now()]);
+    return result.changes;
+  }
 }
