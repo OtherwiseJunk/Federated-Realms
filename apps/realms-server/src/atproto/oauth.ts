@@ -49,7 +49,21 @@ export class GameOAuthClient {
     return this.client !== null;
   }
 
-  async initialize(config: AtProtoConfig): Promise<void> {
+  async initialize(
+    config: AtProtoConfig,
+    stores?: {
+      stateStore: {
+        get(k: string): Promise<any>;
+        set(k: string, v: any): Promise<void>;
+        del(k: string): Promise<void>;
+      };
+      sessionStore: {
+        get(k: string): Promise<any>;
+        set(k: string, v: any): Promise<void>;
+        del(k: string): Promise<void>;
+      };
+    },
+  ): Promise<void> {
     this.config = config;
 
     this.client = new NodeOAuthClient({
@@ -65,8 +79,8 @@ export class GameOAuthClient {
         token_endpoint_auth_method: "none",
         application_type: "web",
       },
-      stateStore: new MemoryStore(),
-      sessionStore: new MemoryStore(),
+      stateStore: stores?.stateStore ?? new MemoryStore(),
+      sessionStore: stores?.sessionStore ?? new MemoryStore(),
     });
 
     console.log("   OAuth client initialized");
