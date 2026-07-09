@@ -7,59 +7,71 @@ export interface OAuthResult {
   did?: string;
   needsCharacter?: boolean;
   gameSystem?: unknown;
-  password?: string;
+  authToken?: string;
 }
 
 interface Props {
   handle: string;
   serverUrl: string;
+  /** Register a new account on the server's own PDS instead of logging in. */
+  signup?: boolean;
+  /** Previously stored token — tried first to skip the OAuth popup. */
+  authToken?: string;
   onComplete: (result: OAuthResult) => void;
 }
 
-type FlowPhase =
-  | "starting"
-  | "waiting"
-  | "password-prompt"
-  | "password-auth"
-  | "complete"
-  | "error";
+type FlowPhase = "starting" | "waiting" | "complete" | "error";
 
-export function OAuthFlow({ handle, serverUrl, onComplete }: Props) {
+export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: Props) {
   const [phase, setPhase] = useState<FlowPhase>("starting");
   const [error, setError] = useState("");
   const [ticket, setTicket] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const started = useRef(false);
 
-  // Start the OAuth flow
+  // Start: try stored token, else begin OAuth
   useEffect(() => {
     if (started.current) return;
     started.current = true;
 
     (async () => {
+      // Fast path: stored token still valid → no OAuth popup needed
+      if (authToken) {
+        try {
+          const res = await fetch(`${serverUrl}/xrpc/com.cacheblasters.realms.action.connect`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (res.ok) {
+            const data = (await res.json()) as OAuthResult;
+            setPhase("complete");
+            onComplete({ ...data, authToken });
+            return;
+          }
+          // 401 → token expired; fall through to OAuth
+        } catch {
+          // network error → fall through to OAuth
+        }
+      }
+
       try {
-        const res = await fetch(`${serverUrl}/auth/login?handle=${encodeURIComponent(handle)}`);
+        const query = signup ? "signup=true" : `handle=${encodeURIComponent(handle)}`;
+        const res = await fetch(`${serverUrl}/auth/login?${query}`);
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(data.error ?? `Login failed (${res.status})`);
         }
 
-        const { url, ticket: t } = (await res.json()) as {
-          url: string;
-          ticket: string;
-        };
+        const { url, ticket: t } = (await res.json()) as { url: string; ticket: string };
         setTicket(t);
         setPhase("waiting");
 
-        // Open OAuth URL in new tab/popup
         window.open(url, "_blank", "noopener");
-      } catch {
-        // OAuth unavailable — fall back to password auth
-        setPhase("password-prompt");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Authentication failed");
+        setPhase("error");
       }
     })();
-  }, [handle, serverUrl]);
+  }, [handle, serverUrl, signup, authToken, onComplete]);
 
   // Poll for OAuth result
   useEffect(() => {
@@ -75,6 +87,7 @@ export function OAuthFlow({ handle, serverUrl, onComplete }: Props) {
           sessionId?: string;
           websocketUrl?: string;
           did?: string;
+          authToken?: string;
           needsCharacter?: boolean;
           gameSystem?: unknown;
           error?: string;
@@ -95,6 +108,7 @@ export function OAuthFlow({ handle, serverUrl, onComplete }: Props) {
           sessionId: data.sessionId,
           websocketUrl: data.websocketUrl,
           did: data.did,
+          authToken: data.authToken,
           needsCharacter: data.needsCharacter,
           gameSystem: data.gameSystem,
         });
@@ -106,106 +120,34 @@ export function OAuthFlow({ handle, serverUrl, onComplete }: Props) {
     return () => clearInterval(interval);
   }, [phase, ticket, serverUrl, onComplete]);
 
-  async function submitPassword() {
-    if (!passwordInput) return;
-    setPhase("password-auth");
-    setPasswordError("");
-
-    try {
-      const res = await fetch(`${serverUrl}/auth/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle, password: passwordInput }),
-      });
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `Login failed (${res.status})`);
-      }
-
-      const data = (await res.json()) as {
-        sessionId?: string;
-        did?: string;
-        needsCharacter?: boolean;
-        gameSystem?: unknown;
-      };
-
-      setPhase("complete");
-      onComplete({
-        sessionId: data.sessionId,
-        did: data.did,
-        needsCharacter: data.needsCharacter,
-        gameSystem: data.gameSystem,
-        password: passwordInput,
-      });
-    } catch (err) {
-      setPasswordError(err instanceof Error ? err.message : "Login failed");
-      setPasswordInput("");
-      setPhase("password-prompt");
-    }
-  }
+  const title = signup ? "Create Account" : "Sign In";
 
   return (
     <div className="page-container">
-      <h2 style={{ color: "var(--color-cyan)" }}>Sign In</h2>
+      <h2 style={{ color: "var(--color-cyan)" }}>{title}</h2>
 
       {phase === "starting" && (
-        <p style={{ color: "var(--color-yellow)" }}>Starting authentication for {handle}...</p>
+        <p style={{ color: "var(--color-yellow)" }}>
+          {signup ? "Starting registration..." : `Starting authentication for ${handle}...`}
+        </p>
       )}
 
       {phase === "waiting" && (
         <>
           <p style={{ color: "var(--color-green)" }}>
-            A new window has been opened for authentication.
+            A new window has been opened for {signup ? "registration" : "authentication"}.
           </p>
-          <p>Please authorize Federated Realms in your browser, then return here.</p>
-          <p className="dim">Waiting for authorization...</p>
-          <button className="page-button" onClick={() => setPhase("password-prompt")}>
-            Use password instead
-          </button>
+          <p>
+            {signup
+              ? "Create your account in the new window (handle, email, password), then return here."
+              : "Please authorize Federated Realms in your browser, then return here."}
+          </p>
+          <p className="dim">Waiting for {signup ? "account creation" : "authorization"}...</p>
         </>
-      )}
-
-      {phase === "password-prompt" && (
-        <>
-          <p>Enter password for {handle}:</p>
-          <div className="page-input-row">
-            <span className="input-prompt">&gt; </span>
-            <input
-              className="page-input"
-              type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitPassword();
-              }}
-              autoFocus
-            />
-            <button className="page-button page-button-primary" onClick={submitPassword}>
-              Sign In
-            </button>
-          </div>
-          {passwordError && <p style={{ color: "var(--color-red)" }}>{passwordError}</p>}
-        </>
-      )}
-
-      {phase === "password-auth" && (
-        <p style={{ color: "var(--color-yellow)" }}>Authenticating...</p>
       )}
 
       {phase === "error" && (
-        <>
-          <p style={{ color: "var(--color-red)" }}>Authentication failed: {error}</p>
-          <button
-            className="page-button"
-            onClick={() => {
-              setPasswordInput("");
-              setPhase("password-prompt");
-            }}
-          >
-            Try password login
-          </button>
-        </>
+        <p style={{ color: "var(--color-red)" }}>Authentication failed: {error}</p>
       )}
 
       {phase === "complete" && (
