@@ -124,6 +124,13 @@ if (!DEV_MODE && config.atproto.serverPassword) {
   }
 }
 
+/** Resolve the caller's DID from a Bearer auth token; null if missing/invalid/expired. */
+function bearerDid(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  return authTokens.verify(auth.slice("Bearer ".length));
+}
+
 function authSuccessHtml(message: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Federated Realms</title>
 <style>body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
@@ -480,13 +487,15 @@ const server = Bun.serve<SessionData>({
         req.method === "POST"
       ) {
         try {
-          const body = (await req.json()) as { did: string };
-          if (!body.did) {
-            return Response.json({ error: "did is required" }, { status: 400 });
+          const did = bearerDid(req);
+          if (!did) {
+            return Response.json(
+              { error: "Authentication required. Complete OAuth login first." },
+              { status: 401 },
+            );
           }
 
-          // Try to restore OAuth session and load character
-          const agent = await oauthClient.restore(body.did);
+          const agent = await oauthClient.restore(did);
           if (!agent) {
             return Response.json(
               { error: "No valid session. Please authenticate first." },
@@ -494,10 +503,10 @@ const server = Bun.serve<SessionData>({
             );
           }
 
-          const profile = await pdsClient.loadCharacter(agent, body.did);
+          const profile = await pdsClient.loadCharacter(agent, did);
           if (profile) {
             const gameSession = sessions.createSession(
-              body.did,
+              did,
               profile,
               world.getDefaultSpawnRoom(),
               world.gameSystem.formulas,
@@ -529,15 +538,22 @@ const server = Bun.serve<SessionData>({
         req.method === "POST"
       ) {
         try {
+          const did = bearerDid(req);
+          if (!did) {
+            return Response.json(
+              { error: "Authentication required. Complete OAuth login first." },
+              { status: 401 },
+            );
+          }
+
           const body = (await req.json()) as {
-            did: string;
             name: string;
             classId: string;
             raceId: string;
           };
-          if (!body.did || !body.name || !body.classId || !body.raceId) {
+          if (!body.name || !body.classId || !body.raceId) {
             return Response.json(
-              { error: "did, name, classId, and raceId are required" },
+              { error: "name, classId, and raceId are required" },
               { status: 400 },
             );
           }
@@ -548,7 +564,7 @@ const server = Bun.serve<SessionData>({
             );
           }
 
-          const agent = await oauthClient.restore(body.did);
+          const agent = await oauthClient.restore(did);
           if (!agent) {
             return Response.json(
               { error: "No valid session. Please authenticate first." },
@@ -560,11 +576,11 @@ const server = Bun.serve<SessionData>({
           const profile = buildCharacterProfile(body.name, body.classId, body.raceId);
 
           // Write to player's PDS
-          await pdsClient.saveCharacter(agent, body.did, profile);
+          await pdsClient.saveCharacter(agent, did, profile);
 
           // Create game session
           const gameSession = sessions.createSession(
-            body.did,
+            did,
             profile,
             world.getDefaultSpawnRoom(),
             world.gameSystem.formulas,

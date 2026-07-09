@@ -81,17 +81,19 @@ describe("auth endpoints", () => {
 // ─── XRPC Endpoints ─────────────────────────────────────────
 
 describe("XRPC action.connect", () => {
-  test("rejects without DID", async () => {
+  test("rejects without a bearer token", async () => {
     const res = await fetch(
       `http://127.0.0.1:${devPort}/xrpc/com.cacheblasters.realms.action.connect`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     const data = (await res.json()) as Record<string, unknown>;
-    expect(data.error).toContain("did");
+    expect(data.error).toContain("Authentication required");
   });
 
-  test("rejects with unknown DID (no OAuth session)", async () => {
+  test("ignores a DID supplied in the body and still requires a bearer token", async () => {
+    // Regression check for the impersonation bypass: a client-supplied DID
+    // must never be trusted in place of a server-issued bearer token.
     const res = await fetch(
       `http://127.0.0.1:${devPort}/xrpc/com.cacheblasters.realms.action.connect`,
       {
@@ -102,12 +104,14 @@ describe("XRPC action.connect", () => {
     );
     expect(res.status).toBe(401);
     const data = (await res.json()) as Record<string, unknown>;
-    expect(data.error).toContain("session");
+    expect(data.error).toContain("Authentication required");
   });
 });
 
 describe("XRPC action.createCharacter", () => {
-  test("rejects with missing fields", async () => {
+  test("rejects without a bearer token before validating fields", async () => {
+    // The auth gate runs before body parsing, so a missing bearer token
+    // wins over missing fields even when the body itself is incomplete.
     const res = await fetch(
       `http://127.0.0.1:${devPort}/xrpc/com.cacheblasters.realms.action.createCharacter`,
       {
@@ -116,12 +120,12 @@ describe("XRPC action.createCharacter", () => {
         body: JSON.stringify({ did: "did:plc:test", name: "Hero" }),
       },
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     const data = (await res.json()) as Record<string, unknown>;
-    expect(data.error).toContain("required");
+    expect(data.error).toContain("Authentication required");
   });
 
-  test("rejects without valid OAuth session", async () => {
+  test("rejects a fully-populated body when no bearer token is present", async () => {
     const res = await fetch(
       `http://127.0.0.1:${devPort}/xrpc/com.cacheblasters.realms.action.createCharacter`,
       {
@@ -231,7 +235,7 @@ describe("auth enforcement (no dev mode)", () => {
         body: JSON.stringify({ did: "did:plc:test123" }),
       },
     );
-    // Should return 401 since there's no OAuth session
+    // Should return 401 since no bearer token was supplied
     expect(res.status).toBe(401);
   });
 });
