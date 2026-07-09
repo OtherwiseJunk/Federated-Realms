@@ -82,14 +82,18 @@ export function App() {
       setServerUrl(url);
       setServerInfo(info);
 
-      // Save last server to profile
+      // Save last server to profile, preserving prior identity/token when
+      // this account result doesn't carry them (e.g. signup mode has no
+      // handle yet, and this save happens before auth issues a token).
       if (account) {
+        const prev = loadProfile();
         saveProfile({
-          handle: account.handle,
-          did: account.did ?? "",
-          pdsUrl: account.pdsUrl ?? "",
+          handle: account.handle || prev?.handle || "",
+          did: account.did ?? prev?.did ?? "",
+          pdsUrl: account.pdsUrl ?? prev?.pdsUrl ?? "",
           lastServer: url,
           lastServerName: info.name,
+          authToken: account.authToken ?? prev?.authToken,
         });
       }
 
@@ -127,7 +131,7 @@ export function App() {
       if (account) {
         const prev = loadProfile();
         saveProfile({
-          handle: account.handle || (result.did ?? ""),
+          handle: result.handle || account.handle || prev?.handle || (result.did ?? ""),
           did: result.did ?? prev?.did ?? "",
           pdsUrl: prev?.pdsUrl ?? "",
           lastServer: serverUrl,

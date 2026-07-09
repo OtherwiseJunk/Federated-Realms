@@ -5,6 +5,7 @@ export interface OAuthResult {
   sessionId?: string;
   websocketUrl?: string;
   did?: string;
+  handle?: string;
   needsCharacter?: boolean;
   gameSystem?: unknown;
   authToken?: string;
@@ -87,6 +88,7 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
           sessionId?: string;
           websocketUrl?: string;
           did?: string;
+          handle?: string;
           authToken?: string;
           needsCharacter?: boolean;
           gameSystem?: unknown;
@@ -108,6 +110,7 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
           sessionId: data.sessionId,
           websocketUrl: data.websocketUrl,
           did: data.did,
+          handle: data.handle,
           authToken: data.authToken,
           needsCharacter: data.needsCharacter,
           gameSystem: data.gameSystem,

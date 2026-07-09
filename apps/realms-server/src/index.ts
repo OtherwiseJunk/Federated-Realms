@@ -56,6 +56,7 @@ interface PendingLogin {
   sessionId?: string;
   websocketUrl?: string;
   did?: string;
+  handle?: string;
   authToken?: string;
   needsCharacter?: boolean;
   gameSystem?: unknown;
@@ -390,6 +391,7 @@ const server = Bun.serve<SessionData>({
           sessionId: login.sessionId,
           websocketUrl: login.websocketUrl,
           did: login.did,
+          handle: login.handle,
           authToken: login.authToken,
           needsCharacter: login.needsCharacter,
           gameSystem: login.gameSystem,
@@ -403,6 +405,16 @@ const server = Bun.serve<SessionData>({
           const { session: oauthSession, agent } = await oauthClient.callback(url.searchParams);
           const did = oauthSession.did;
           const authToken = authTokens.issue(did);
+
+          // Resolve the account's handle so the client can display/store it
+          // instead of a raw DID (e.g. right after PDS-hosted signup).
+          let handle: string | undefined;
+          try {
+            const res = await agent.com.atproto.server.getSession();
+            handle = res.data.handle;
+          } catch {
+            // handle stays undefined — client falls back to prior/DID
+          }
 
           // Check if player has a character on this server
           const existingProfile = await pdsClient.loadCharacter(agent, did);
@@ -419,6 +431,7 @@ const server = Bun.serve<SessionData>({
               websocketUrl: `${config.atproto.publicUrl.replace(/^http/, "ws")}/ws?session=${gameSession.sessionId}`,
               spawnRoom: gameSession.currentRoom,
               characterState: gameSession.state,
+              handle,
               authToken,
             };
 
@@ -430,6 +443,7 @@ const server = Bun.serve<SessionData>({
                 sessionId: result.sessionId,
                 websocketUrl: result.websocketUrl,
                 did,
+                handle,
                 authToken,
               });
               return new Response(
@@ -449,6 +463,7 @@ const server = Bun.serve<SessionData>({
               status: "complete",
               createdAt: Date.now(),
               did,
+              handle,
               authToken,
               needsCharacter: true,
               gameSystem: world.gameSystem,
@@ -466,6 +481,7 @@ const server = Bun.serve<SessionData>({
           return Response.json({
             needsCharacter: true,
             did,
+            handle,
             authToken,
             gameSystem: world.gameSystem,
           });
