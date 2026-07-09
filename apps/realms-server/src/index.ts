@@ -38,7 +38,6 @@ const authTokens = new AuthTokenStore(stateDb);
 
 // Rate limiters
 const authLimiter = new RateLimiter(10, 60_000); // 10 auth attempts per minute per IP
-const accountLimiter = new RateLimiter(3, 60_000); // 3 account creations per minute per IP
 const commandLimiter = new RateLimiter(30, 1_000); // 30 commands per second per session
 const MAX_WS_MESSAGE_SIZE = 4096; // 4KB max WebSocket message
 const world = new WorldManager(config);
@@ -338,14 +337,24 @@ const server = Bun.serve<SessionData>({
         return Response.json(oauthClient.getClientMetadata(config.atproto.publicUrl));
       }
 
-      // Start OAuth flow
+      // Start OAuth flow. handle=<user handle> for login, signup=true to
+      // register on this server's own PDS (its hosted page handles captcha).
       if (url.pathname === "/auth/login" && req.method === "GET") {
+        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        if (!authLimiter.check(clientIp)) {
+          return Response.json(
+            { error: "Too many login attempts. Try again later." },
+            { status: 429 },
+          );
+        }
         const handle = url.searchParams.get("handle");
-        if (!handle) {
+        const signup = url.searchParams.get("signup") === "true";
+        if (!handle && !signup) {
           return Response.json({ error: "handle parameter required" }, { status: 400 });
         }
         try {
-          const authUrl = await oauthClient.authorize(handle);
+          const input = signup ? config.atproto.pdsPublicUrl : handle!;
+          const authUrl = await oauthClient.authorize(input);
           // Extract state from auth URL to use as polling ticket
           const ticket = new URL(authUrl).searchParams.get("state") ?? crypto.randomUUID();
           pendingLogins.set(ticket, { status: "pending", createdAt: Date.now() });
@@ -684,162 +693,6 @@ const server = Bun.serve<SessionData>({
         return Response.json({ found: false });
       }
 
-      // ── Password-based session (for signup flow / co-located PDS) ──
-
-      if (url.pathname === "/auth/session" && req.method === "POST") {
-        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-        if (!authLimiter.check(clientIp)) {
-          return Response.json(
-            { error: "Too many login attempts. Try again later." },
-            { status: 429 },
-          );
-        }
-        try {
-          const body = (await req.json()) as {
-            handle: string;
-            password: string;
-            name?: string;
-            classId?: string;
-            raceId?: string;
-          };
-          if (!body.handle || !body.password) {
-            return Response.json({ error: "handle and password are required" }, { status: 400 });
-          }
-
-          // Resolve the handle to find the correct PDS service URL
-          const { AtpAgent } = await import("@atproto/api");
-          let serviceUrl = config.atproto.pdsUrl; // default to local PDS
-
-          try {
-            // Try to resolve the handle's DID document to find their PDS
-            const resolveAgent = new AtpAgent({ service: "https://bsky.social" });
-            const resolved = await resolveAgent.resolveHandle({ handle: body.handle });
-            if (resolved.data?.did) {
-              // Look up the DID document to find PDS service endpoint
-              const didDoc = await fetch(
-                resolved.data.did.startsWith("did:plc:")
-                  ? `https://plc.directory/${resolved.data.did}`
-                  : `https://${body.handle}/.well-known/did.json`,
-              );
-              if (didDoc.ok) {
-                const doc = (await didDoc.json()) as {
-                  service?: Array<{ id: string; type: string; serviceEndpoint: string }>;
-                };
-                const pdsService = doc.service?.find(
-                  (s) => s.id === "#atproto_pds" || s.type === "AtprotoPersonalDataServer",
-                );
-                if (pdsService?.serviceEndpoint) {
-                  serviceUrl = pdsService.serviceEndpoint;
-                }
-              }
-            }
-          } catch {
-            // Handle resolution failed — fall back to local PDS
-          }
-
-          const agent = new AtpAgent({ service: serviceUrl });
-          try {
-            await agent.login({ identifier: body.handle, password: body.password });
-          } catch {
-            return Response.json({ error: "Invalid handle or password" }, { status: 401 });
-          }
-
-          const did = agent.session?.did ?? "";
-          if (!did) {
-            return Response.json({ error: "Login failed" }, { status: 401 });
-          }
-
-          // Try to load existing character from PDS
-          let profile = await pdsClient.loadCharacter(agent, did);
-
-          // If name/class/race provided and no existing character, create one
-          if (!profile && body.name && body.classId && body.raceId) {
-            profile = buildCharacterProfile(body.name, body.classId, body.raceId);
-            await pdsClient.saveCharacter(agent, did, profile);
-          }
-
-          if (!profile) {
-            return Response.json({
-              needsCharacter: true,
-              did,
-              gameSystem: world.gameSystem,
-            });
-          }
-
-          const gameSession = sessions.createSession(
-            did,
-            profile,
-            world.getDefaultSpawnRoom(),
-            world.gameSystem.formulas,
-          );
-          return Response.json({
-            sessionId: gameSession.sessionId,
-            websocketUrl: `${config.atproto.publicUrl.replace(/^http/, "ws")}/ws?session=${gameSession.sessionId}`,
-            did,
-          });
-        } catch (err) {
-          return Response.json(
-            { error: err instanceof Error ? err.message : "Session creation failed" },
-            { status: 500 },
-          );
-        }
-      }
-
-      // ── Account creation (proxied to co-located PDS) ──
-
-      if (url.pathname === "/auth/create-account" && req.method === "POST") {
-        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-        if (!accountLimiter.check(clientIp)) {
-          return Response.json(
-            { error: "Too many account creation attempts. Try again later." },
-            { status: 429 },
-          );
-        }
-        try {
-          const body = (await req.json()) as { handle: string; email: string; password: string };
-          if (!body.handle || !body.email || !body.password) {
-            return Response.json(
-              { error: "handle, email, and password are required" },
-              { status: 400 },
-            );
-          }
-          if (body.handle.length > 256 || body.email.length > 256 || body.password.length > 256) {
-            return Response.json({ error: "Input fields exceed maximum length" }, { status: 400 });
-          }
-
-          // Resolve handle: if no dot, append the PDS handle domain
-          // PDS uses .test when hostname is localhost
-          const handleDomain =
-            config.atproto.pdsHostname === "localhost" ? "test" : config.atproto.pdsHostname;
-          const handle = body.handle.includes(".") ? body.handle : `${body.handle}.${handleDomain}`;
-
-          const pdsRes = await fetch(
-            `${config.atproto.pdsUrl}/xrpc/com.atproto.server.createAccount`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ handle, email: body.email, password: body.password }),
-            },
-          );
-
-          if (!pdsRes.ok) {
-            const errData = (await pdsRes.json().catch(() => ({}))) as { message?: string };
-            return Response.json(
-              { error: errData.message ?? `Account creation failed (${pdsRes.status})` },
-              { status: pdsRes.status },
-            );
-          }
-
-          const data = (await pdsRes.json()) as { did: string; handle: string };
-          return Response.json({ did: data.did, handle: data.handle });
-        } catch (err) {
-          return Response.json(
-            { error: err instanceof Error ? err.message : "Account creation failed" },
-            { status: 500 },
-          );
-        }
-      }
-
       // ── Info routes ──
 
       // Health check
@@ -864,6 +717,7 @@ const server = Bun.serve<SessionData>({
           rooms: world.areaManager.getAllRooms().size,
           serverDid: serverIdentity.did || undefined,
           pdsHostname: handleDomain,
+          signup: { available: oauthClient.initialized },
         });
       }
 
