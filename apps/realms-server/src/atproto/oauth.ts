@@ -76,13 +76,19 @@ export class GameOAuthClient {
   }
 
   /**
-   * Start OAuth flow for a player handle.
+   * Start OAuth flow for a player handle (or PDS URL for signup).
    * Returns the authorization URL to redirect the user to.
+   *
+   * `state` is our application state (the polling ticket) — it round-trips
+   * through the OAuth flow and comes back from callback(). It is NOT visible
+   * in the authorization URL: AT Proto uses PAR, so the URL only carries a
+   * request_uri.
    */
-  async authorize(handle: string): Promise<URL> {
+  async authorize(handle: string, state?: string): Promise<URL> {
     if (!this.client) throw new Error("OAuth not initialized");
     return this.client.authorize(handle, {
       scope: "atproto transition:generic",
+      state,
     });
   }
 
@@ -93,13 +99,16 @@ export class GameOAuthClient {
   async callback(params: URLSearchParams): Promise<{
     session: { did: string };
     agent: Agent;
+    /** The application state passed to authorize() (our polling ticket). */
+    state: string | null;
   }> {
     if (!this.client) throw new Error("OAuth not initialized");
-    const { session } = await this.client.callback(params);
+    const { session, state } = await this.client.callback(params);
     const agent = new Agent(session);
     return {
       session: { did: session.sub },
       agent,
+      state,
     };
   }
 

@@ -27,6 +27,7 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
   const [phase, setPhase] = useState<FlowPhase>("starting");
   const [error, setError] = useState("");
   const [ticket, setTicket] = useState("");
+  const [authUrl, setAuthUrl] = useState("");
   const started = useRef(false);
 
   // Start: try stored token, else begin OAuth
@@ -64,9 +65,16 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
 
         const { url, ticket: t } = (await res.json()) as { url: string; ticket: string };
         setTicket(t);
+        setAuthUrl(url);
         setPhase("waiting");
 
-        window.open(url, "_blank", "noopener");
+        // Centered popup window (the callback page closes it when done).
+        // If a popup blocker eats it, the waiting screen shows a manual link.
+        const w = 520;
+        const h = 720;
+        const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+        const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+        window.open(url, "atproto-oauth", `popup,width=${w},height=${h},left=${left},top=${top}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Authentication failed");
         setPhase("error");
@@ -154,14 +162,23 @@ export function OAuthFlow({ handle, serverUrl, signup, authToken, onComplete }: 
       {phase === "waiting" && (
         <>
           <p style={{ color: "var(--color-green)" }}>
-            A new window has been opened for {signup ? "registration" : "authentication"}.
+            A {signup ? "registration" : "sign-in"} window has been opened.
           </p>
           <p>
             {signup
-              ? "Create your account in the new window (handle, email, password), then return here."
-              : "Please authorize Federated Realms in your browser, then return here."}
+              ? "Create your account there (handle, email, password) — this page will continue automatically."
+              : "Authorize Federated Realms there — this page will continue automatically."}
           </p>
           <p className="dim">Waiting for {signup ? "account creation" : "authorization"}...</p>
+          {authUrl && (
+            <p className="dim">
+              Nothing opened?{" "}
+              <a href={authUrl} target="_blank" rel="noopener noreferrer">
+                Open the {signup ? "registration" : "sign-in"} page manually
+              </a>
+              .
+            </p>
+          )}
         </>
       )}
 

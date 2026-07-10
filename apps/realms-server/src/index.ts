@@ -27,6 +27,7 @@ import { WorldPublisher } from "./atproto/world-publisher.js";
 import { FederationManager } from "./federation/federation-manager.js";
 import { ChatRelayService } from "./federation/chat-relay.js";
 import { RateLimiter } from "./server/rate-limiter.js";
+import { OAuthCallbackError } from "@atproto/oauth-client-node";
 
 const config = loadConfig();
 
@@ -150,10 +151,13 @@ function bearerDid(req: Request): string | null {
 }
 
 function authSuccessHtml(message: string): string {
+  // Served into the OAuth popup — closes itself if it was script-opened
+  // (web client); CLI users see the message in the tab their browser opened.
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Federated Realms</title>
 <style>body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
 .box{text-align:center;padding:2rem;border:1px solid #4a4a6a;border-radius:8px}h1{color:#7fdbca;margin-bottom:1rem}p{color:#c3c3c3}</style>
-</head><body><div class="box"><h1>Federated Realms</h1><p>${message}</p></div></body></html>`;
+</head><body><div class="box"><h1>Federated Realms</h1><p>${message}</p></div>
+<script>setTimeout(function(){window.close()},1200)</script></body></html>`;
 }
 
 function warnIfPublicUrlLooksLocal(publicUrl: string): void {
@@ -411,9 +415,11 @@ const server = Bun.serve<SessionData>({
         }
         try {
           const input = signup ? config.atproto.pdsPublicUrl : handle!;
-          const authUrl = await oauthClient.authorize(input);
-          // Extract state from auth URL to use as polling ticket
-          const ticket = new URL(authUrl).searchParams.get("state") ?? crypto.randomUUID();
+          // The ticket rides through the OAuth flow as application state and
+          // comes back from the callback. (It can't be read from the auth URL:
+          // AT Proto uses PAR, so the URL only carries a request_uri.)
+          const ticket = crypto.randomUUID();
+          const authUrl = await oauthClient.authorize(input, ticket);
           pendingLogins.set(ticket, { status: "pending", createdAt: Date.now() });
           return Response.json({ url: authUrl.toString(), ticket });
         } catch (err) {
@@ -456,9 +462,14 @@ const server = Bun.serve<SessionData>({
 
       // OAuth callback
       if (url.pathname === "/oauth/callback") {
-        const stateParam = url.searchParams.get("state") ?? "";
         try {
-          const { session: oauthSession, agent } = await oauthClient.callback(url.searchParams);
+          const {
+            session: oauthSession,
+            agent,
+            state,
+          } = await oauthClient.callback(url.searchParams);
+          // Our polling ticket rode through the flow as application state
+          const stateParam = state ?? "";
           const did = oauthSession.did;
           const authToken = authTokens.issue(did);
 
@@ -506,7 +517,7 @@ const server = Bun.serve<SessionData>({
                 authToken,
               });
               return new Response(
-                authSuccessHtml("Authorization successful! You can return to your terminal."),
+                authSuccessHtml("Signed in! You can close this window and return to the game."),
                 {
                   headers: { "Content-Type": "text/html" },
                 },
@@ -529,7 +540,7 @@ const server = Bun.serve<SessionData>({
             });
             return new Response(
               authSuccessHtml(
-                "Authorization successful! Return to your terminal to create your character.",
+                "Signed in! Close this window and return to the game to create your character.",
               ),
               {
                 headers: { "Content-Type": "text/html" },
@@ -546,14 +557,17 @@ const server = Bun.serve<SessionData>({
           });
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Callback failed";
-          if (pendingLogins.has(stateParam)) {
-            pendingLogins.set(stateParam, {
+          // Recover the polling ticket from the callback error so the waiting
+          // client sees the failure instead of timing out.
+          const errTicket = err instanceof OAuthCallbackError ? (err.state ?? "") : "";
+          if (pendingLogins.has(errTicket)) {
+            pendingLogins.set(errTicket, {
               status: "error",
               createdAt: Date.now(),
               error: errorMsg,
             });
             return new Response(
-              authSuccessHtml("Authentication failed. Return to your terminal."),
+              authSuccessHtml("Authentication failed. Close this window and try again."),
               {
                 headers: { "Content-Type": "text/html" },
               },
