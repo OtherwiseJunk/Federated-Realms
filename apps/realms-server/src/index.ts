@@ -180,7 +180,7 @@ function warnIfPdsPublicUrlLooksLocal(pdsPublicUrl: string): void {
       );
     }
   } catch {
-    console.warn(`   PUBLIC_URL is not a valid URL: ${pdsPublicUrl}`);
+    console.warn(`   PDS_PUBLIC_URL is not a valid URL: ${pdsPublicUrl}`);
   }
 }
 
