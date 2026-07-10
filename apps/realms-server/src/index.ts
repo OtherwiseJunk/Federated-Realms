@@ -93,8 +93,6 @@ await bluesky.initialize();
 // optional and requires SERVER_PASSWORD, but player OAuth does not.
 if (!DEV_MODE) {
   try {
-    console.info("   Initializing OAuth client...");
-    console.info(config.atproto);
     await oauthClient.initialize(config.atproto, {
       stateStore: new SqliteSimpleStore(stateDb, "oauth_state"),
       sessionStore: new SqliteSimpleStore(stateDb, "oauth_session"),
