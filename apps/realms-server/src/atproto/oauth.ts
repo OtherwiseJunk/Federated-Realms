@@ -67,18 +67,7 @@ export class GameOAuthClient {
     this.config = config;
 
     this.client = new NodeOAuthClient({
-      clientMetadata: {
-        client_id: `${config.publicUrl}/oauth/client-metadata.json`,
-        client_name: "Federated Realms",
-        client_uri: config.publicUrl,
-        redirect_uris: [`${config.publicUrl}/oauth/callback`],
-        grant_types: ["authorization_code", "refresh_token"],
-        response_types: ["code"],
-        scope: "atproto transition:generic",
-        dpop_bound_access_tokens: true,
-        token_endpoint_auth_method: "none",
-        application_type: "web",
-      },
+      clientMetadata: buildClientMetadata(config.publicUrl),
       stateStore: stores?.stateStore ?? new MemoryStore(),
       sessionStore: stores?.sessionStore ?? new MemoryStore(),
     });
@@ -144,19 +133,30 @@ export class GameOAuthClient {
    * Returns the OAuth client metadata JSON for serving at
    * /oauth/client-metadata.json
    */
-  getClientMetadata(publicUrlOverride?: string): Record<string, unknown> {
+  getClientMetadata(publicUrlOverride?: string): ClientMetadata {
     const publicUrl = this.config?.publicUrl ?? publicUrlOverride ?? "http://localhost:3000";
-    return {
-      client_id: `${publicUrl}/oauth/client-metadata.json`,
-      client_name: "Federated Realms",
-      client_uri: publicUrl,
-      redirect_uris: [`${publicUrl}/oauth/callback`, "http://127.0.0.1/oauth/callback"],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      scope: "atproto transition:generic",
-      dpop_bound_access_tokens: true,
-      token_endpoint_auth_method: "none",
-      application_type: "web",
-    };
+    return buildClientMetadata(publicUrl);
   }
+}
+
+type ClientMetadata = ConstructorParameters<typeof NodeOAuthClient>[0]["clientMetadata"];
+
+/**
+ * The OAuth client metadata, used both to configure NodeOAuthClient and to
+ * serve /oauth/client-metadata.json — the two MUST match, since authorization
+ * servers validate requests against the published document.
+ */
+function buildClientMetadata(publicUrl: string): ClientMetadata {
+  return {
+    client_id: `${publicUrl}/oauth/client-metadata.json`,
+    client_name: "Federated Realms",
+    client_uri: publicUrl,
+    redirect_uris: [`${publicUrl}/oauth/callback`],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    scope: "atproto transition:generic",
+    dpop_bound_access_tokens: true,
+    token_endpoint_auth_method: "none",
+    application_type: "web",
+  };
 }

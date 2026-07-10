@@ -51,11 +51,13 @@ describe("oauth client metadata", () => {
     expect(meta.client_id).toContain("/oauth/client-metadata.json");
   });
 
-  test("redirect_uris includes localhost for CLI", async () => {
+  test("redirect_uris has no loopback entry (invalid for web clients)", async () => {
     const res = await fetch(`http://127.0.0.1:${devPort}/oauth/client-metadata.json`);
     const meta = (await res.json()) as Record<string, unknown>;
     const uris = meta.redirect_uris as string[];
-    expect(uris.some((u) => u.startsWith("http://127.0.0.1"))).toBe(true);
+    expect(uris).toHaveLength(1);
+    expect(uris[0].endsWith("/oauth/callback")).toBe(true);
+    expect(uris.some((u) => u.startsWith("http://127.0.0.1"))).toBe(false);
   });
 });
 
@@ -69,12 +71,12 @@ describe("auth endpoints", () => {
     expect(data.error).toContain("handle");
   });
 
-  test("/auth/login with invalid handle returns error (no PDS)", async () => {
+  test("/auth/login without OAuth configured returns 503", async () => {
     const res = await fetch(`http://127.0.0.1:${devPort}/auth/login?handle=nonexistent.invalid`);
-    // Should fail because OAuth client isn't initialized (no PDS configured)
-    expect(res.status).toBe(500);
+    // OAuth client isn't initialized (no PDS configured) — clean unavailable error
+    expect(res.status).toBe(503);
     const data = (await res.json()) as Record<string, unknown>;
-    expect(data.error).toBeTruthy();
+    expect(data.error).toBe("OAuth is not available on this server");
   });
 
   test("/auth/login?signup=true returns 503 when signup is unavailable", async () => {
