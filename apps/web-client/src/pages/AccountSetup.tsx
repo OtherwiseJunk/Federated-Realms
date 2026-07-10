@@ -117,11 +117,7 @@ export function AccountSetup({ onComplete }: Props) {
   return (
     <div className="page-container">
       <h2 style={{ color: "var(--color-cyan)" }}>Sign In</h2>
-      <p>
-        {localMode
-          ? "Enter your handle:"
-          : "Enter your AT Protocol handle or DID:"}
-      </p>
+      <p>{localMode ? "Enter your handle:" : "Enter your AT Protocol handle or DID:"}</p>
 
       <div className="page-input-row">
         <span className="input-prompt">&gt; </span>
