@@ -158,6 +158,7 @@ function authSuccessHtml(message: string): string {
 
 function warnIfPublicUrlLooksLocal(publicUrl: string): void {
   try {
+    console.info(`Evaluating PUBLIC_URL: ${publicUrl}`);
     const parsed = new URL(publicUrl);
     if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) {
       console.warn(
@@ -171,6 +172,7 @@ function warnIfPublicUrlLooksLocal(publicUrl: string): void {
 
 function warnIfPdsPublicUrlLooksLocal(pdsPublicUrl: string): void {
   try {
+    console.info(`Evaluating PDS_PUBLIC_URL: ${pdsPublicUrl}`);
     const parsed = new URL(pdsPublicUrl);
     if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) {
       console.warn(
