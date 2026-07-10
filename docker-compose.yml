@@ -21,6 +21,14 @@ services:
       - PDS_HCAPTCHA_SECRET_KEY=${PDS_HCAPTCHA_SECRET_KEY:-}
       - PDS_HCAPTCHA_TOKEN_SALT=${PDS_HCAPTCHA_TOKEN_SALT:-}
       - PDS_DEV_MODE=${PDS_DEV_MODE:-false}
+      # AppView wiring — without these the PDS refuses all app.bsky.* routes
+      # ("No service configured"), which breaks bsky.app login for accounts
+      # homed here. Matches the official PDS distribution defaults.
+      - PDS_BSKY_APP_VIEW_URL=${PDS_BSKY_APP_VIEW_URL:-https://api.bsky.app}
+      - PDS_BSKY_APP_VIEW_DID=${PDS_BSKY_APP_VIEW_DID:-did:web:api.bsky.app}
+      - PDS_REPORT_SERVICE_URL=${PDS_REPORT_SERVICE_URL:-https://mod.bsky.app}
+      - PDS_REPORT_SERVICE_DID=${PDS_REPORT_SERVICE_DID:-did:plc:ar7c4by46qjdydhdevvrndac}
+      - PDS_CRAWLERS=${PDS_CRAWLERS:-https://bsky.network}
       - PDS_EMAIL_SMTP_URL=${PDS_EMAIL_SMTP_URL:-smtp://fake:25}
       - PDS_EMAIL_FROM_ADDRESS=${PDS_EMAIL_FROM_ADDRESS:-noreply@${PDS_HOSTNAME:-localhost}}
       - LOG_ENABLED=true
