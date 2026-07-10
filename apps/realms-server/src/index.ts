@@ -1,10 +1,9 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { SqliteSimpleStore } from "./atproto/sqlite-stores.js";
 import { AuthTokenStore } from "./atproto/auth-token-store.js";
 import { WorldManager } from "./world/world-manager.js";
 import { SessionManager } from "./server/session-manager.js";
+import { openStateDatabase } from "./server/state-db.js";
 import { type SessionData } from "./entities/character-session.js";
 import { parseCommand } from "@realms/common";
 import { encodeMessage, decodeClientMessage, type ServerMessage } from "@realms/protocol";
@@ -32,8 +31,7 @@ import { RateLimiter } from "./server/rate-limiter.js";
 const config = loadConfig();
 
 // Mutable server state (auth tokens, OAuth sessions) — survives restarts
-mkdirSync(config.dataDir, { recursive: true });
-const stateDb = new Database(`${config.dataDir}/realms.db`);
+const stateDb = openStateDatabase(config.dataDir);
 const authTokens = new AuthTokenStore(stateDb);
 authTokens.purgeExpired();
 setInterval(() => authTokens.purgeExpired(), 60 * 60_000); // hourly
