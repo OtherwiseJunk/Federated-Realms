@@ -107,6 +107,7 @@ if (!DEV_MODE) {
   }
 
   warnIfPublicUrlLooksLocal(config.atproto.publicUrl);
+  warnIfPdsPublicUrlLooksLocal(config.atproto.pdsPublicUrl);
 
   if (config.atproto.serverPassword) {
     try {
@@ -167,6 +168,19 @@ function warnIfPublicUrlLooksLocal(publicUrl: string): void {
     }
   } catch {
     console.warn(`   PUBLIC_URL is not a valid URL: ${publicUrl}`);
+  }
+}
+
+function warnIfPdsPublicUrlLooksLocal(pdsPublicUrl: string): void {
+  try {
+    const parsed = new URL(pdsPublicUrl);
+    if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) {
+      console.warn(
+        `   PDS_PUBLIC_URL is ${pdsPublicUrl}; deployed OAuth needs the external HTTPS URL (for example https://mud.cacheblasters.com)`,
+      );
+    }
+  } catch {
+    console.warn(`   PUBLIC_URL is not a valid URL: ${pdsPublicUrl}`);
   }
 }
 
