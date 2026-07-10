@@ -4,4 +4,6 @@ export interface SavedProfile {
   pdsUrl: string;
   lastServer?: string;
   lastServerName?: string;
+  /** Game-server bearer token — only valid for lastServer. */
+  authToken?: string;
 }

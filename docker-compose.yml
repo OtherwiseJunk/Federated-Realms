@@ -13,8 +13,22 @@ services:
       - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD:?PDS_ADMIN_PASSWORD is required}
       - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_ROTATION_KEY:-}
       - PDS_DID_PLC_URL=${PDS_PLC_URL:-https://plc.directory}
-      - PDS_INVITE_REQUIRED=false
+      # Invite requirement is the bot gate for raw createAccount XRPC.
+      # Only set false after the nginx createAccount rule + hCaptcha are live
+      # (see rollout ratchet in GH issue #20).
+      - PDS_INVITE_REQUIRED=${PDS_INVITE_REQUIRED:-true}
+      - PDS_HCAPTCHA_SITE_KEY=${PDS_HCAPTCHA_SITE_KEY:-}
+      - PDS_HCAPTCHA_SECRET_KEY=${PDS_HCAPTCHA_SECRET_KEY:-}
+      - PDS_HCAPTCHA_TOKEN_SALT=${PDS_HCAPTCHA_TOKEN_SALT:-}
       - PDS_DEV_MODE=${PDS_DEV_MODE:-false}
+      # AppView wiring — without these the PDS refuses all app.bsky.* routes
+      # ("No service configured"), which breaks bsky.app login for accounts
+      # homed here. Matches the official PDS distribution defaults.
+      - PDS_BSKY_APP_VIEW_URL=${PDS_BSKY_APP_VIEW_URL:-https://api.bsky.app}
+      - PDS_BSKY_APP_VIEW_DID=${PDS_BSKY_APP_VIEW_DID:-did:web:api.bsky.app}
+      - PDS_REPORT_SERVICE_URL=${PDS_REPORT_SERVICE_URL:-https://mod.bsky.app}
+      - PDS_REPORT_SERVICE_DID=${PDS_REPORT_SERVICE_DID:-did:plc:ar7c4by46qjdydhdevvrndac}
+      - PDS_CRAWLERS=${PDS_CRAWLERS:-https://bsky.network}
       - PDS_EMAIL_SMTP_URL=${PDS_EMAIL_SMTP_URL:-smtp://fake:25}
       - PDS_EMAIL_FROM_ADDRESS=${PDS_EMAIL_FROM_ADDRESS:-noreply@${PDS_HOSTNAME:-localhost}}
       - LOG_ENABLED=true
@@ -46,6 +60,8 @@ services:
       - SERVER_DID=${SERVER_DID:-}
       - SERVER_HANDLE=${SERVER_HANDLE:-federated-realms.test}
       - SERVER_PASSWORD=${SERVER_PASSWORD:-}
+      - PDS_PUBLIC_URL=${PDS_PUBLIC_URL:-}
+      - DATA_DIR=/data
       # OAuth
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:${PORT:-3000}}
       # Federation
@@ -61,6 +77,8 @@ services:
       - BSKY_PLAYER_CROSSPOST=${BSKY_PLAYER_CROSSPOST:-true}
       - BSKY_THREAD_REFRESH=${BSKY_THREAD_REFRESH:-60}
       - BSKY_THROTTLE_MS=${BSKY_THROTTLE_MS:-2000}
+    volumes:
+      - realms-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://localhost:' + (process.env.PORT || 3000) + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
@@ -84,3 +102,4 @@ services:
 
 volumes:
   pds-data:
+  realms-data:

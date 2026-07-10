@@ -65,7 +65,7 @@ export function App() {
 
   // Auth result
   const [authSessionId, setAuthSessionId] = useState("");
-  const [authDid, setAuthDid] = useState("");
+  const [authToken, setAuthToken] = useState("");
 
   // Connection
   const [client, setClient] = useState<WsClient | null>(null);
@@ -74,33 +74,6 @@ export function App() {
 
   const handleAccountDone = useCallback((result: AccountResult) => {
     setAccount(result);
-
-    // If signup already resolved a server (create-account flow), skip ServerSelect
-    if (result.serverUrl && result.serverInfo) {
-      setServerUrl(result.serverUrl);
-      setServerInfo(result.serverInfo);
-
-      saveProfile({
-        handle: result.handle,
-        did: result.did ?? "",
-        pdsUrl: result.pdsUrl ?? "",
-        lastServer: result.serverUrl,
-        lastServerName: result.serverInfo.name,
-      });
-
-      // Fetch system data for character creation
-      fetch(`${result.serverUrl}/system`)
-        .then((res) => res.json())
-        .then((data) => {
-          setSystem(data as SystemData);
-          setPhase("create");
-        })
-        .catch(() => {
-          setPhase("play");
-        });
-      return;
-    }
-
     setPhase("server");
   }, []);
 
@@ -109,19 +82,23 @@ export function App() {
       setServerUrl(url);
       setServerInfo(info);
 
-      // Save last server to profile
+      // Save last server to profile, preserving prior identity/token when
+      // this account result doesn't carry them (e.g. signup mode has no
+      // handle yet, and this save happens before auth issues a token).
       if (account) {
+        const prev = loadProfile();
         saveProfile({
-          handle: account.handle,
-          did: account.did ?? "",
-          pdsUrl: account.pdsUrl ?? "",
+          handle: account.handle || prev?.handle || "",
+          did: account.did ?? prev?.did ?? "",
+          pdsUrl: account.pdsUrl ?? prev?.pdsUrl ?? "",
           lastServer: url,
           lastServerName: info.name,
+          authToken: account.authToken ?? prev?.authToken,
         });
       }
 
       // OAuth mode: go to authentication phase
-      if (account?.mode === "oauth") {
+      if (account?.mode === "oauth" || account?.mode === "signup") {
         setPhase("authenticate");
         return;
       }
@@ -148,17 +125,25 @@ export function App() {
 
   const handleOAuthComplete = useCallback(
     (result: OAuthResult) => {
+      if (result.authToken) setAuthToken(result.authToken);
+
+      // Persist token + identity for "Continue as" next launch
+      if (account) {
+        const prev = loadProfile();
+        saveProfile({
+          handle: result.handle || account.handle || prev?.handle || (result.did ?? ""),
+          did: result.did ?? prev?.did ?? "",
+          pdsUrl: prev?.pdsUrl ?? "",
+          lastServer: serverUrl,
+          lastServerName: prev?.lastServerName,
+          authToken: result.authToken,
+        });
+      }
+
       if (result.sessionId) {
-        // Returning player — connect directly
         setAuthSessionId(result.sessionId);
-        if (result.did) setAuthDid(result.did);
         setPhase("play");
       } else if (result.needsCharacter) {
-        // New player — needs character creation
-        if (result.did) setAuthDid(result.did);
-        if (result.password && account) {
-          setAccount((prev) => (prev ? { ...prev, password: result.password } : prev));
-        }
         if (result.gameSystem) {
           setSystem(result.gameSystem as SystemData);
         } else {
@@ -186,48 +171,24 @@ export function App() {
 
     const c = new WsClient();
 
-    if (account?.mode === "oauth" && authSessionId && serverUrl) {
+    if (account && account.mode !== "dev" && authSessionId && serverUrl) {
       // OAuth mode: connect with session from auth flow
       const wsUrl = serverUrl.replace(/^http/, "ws") + "/ws";
       c.connectWithSession({ url: wsUrl, sessionId: authSessionId });
-    } else if (account?.mode === "oauth" && account.password && serverUrl) {
-      // Signup flow: authenticate with password and create character + session
-      (async () => {
-        try {
-          const res = await fetch(`${serverUrl}/auth/session`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              handle: account.handle,
-              password: account.password,
-              name: playerName || account.handle.split(".")[0],
-              classId: finalClass,
-              raceId: finalRace,
-            }),
-          });
-          if (!res.ok) {
-            const err = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(err.error ?? `Session failed (${res.status})`);
-          }
-          const data = (await res.json()) as { sessionId: string };
-          const wsUrl = serverUrl.replace(/^http/, "ws") + "/ws";
-          c.connectWithSession({ url: wsUrl, sessionId: data.sessionId });
-        } catch (err) {
-          console.error("Session creation failed:", err);
-        }
-      })();
-    } else if (account?.mode === "oauth" && authDid && serverUrl) {
-      // OAuth sign-in flow: new character needed after OAuth
+    } else if (account && account.mode !== "dev" && authToken && serverUrl) {
+      // New character needed after OAuth — authenticated by bearer token
       (async () => {
         try {
           const res = await fetch(
             `${serverUrl}/xrpc/com.cacheblasters.realms.action.createCharacter`,
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+              },
               body: JSON.stringify({
-                did: authDid,
-                name: playerName || account.handle,
+                name: playerName || account.handle || "Adventurer",
                 classId: finalClass,
                 raceId: finalRace,
               }),
@@ -269,7 +230,7 @@ export function App() {
     finalClass,
     finalRace,
     authSessionId,
-    authDid,
+    authToken,
   ]);
 
   // -- Render phases --
@@ -300,7 +261,13 @@ export function App() {
 
   if (phase === "authenticate" && account && serverUrl) {
     return (
-      <OAuthFlow handle={account.handle} serverUrl={serverUrl} onComplete={handleOAuthComplete} />
+      <OAuthFlow
+        handle={account.handle}
+        serverUrl={serverUrl}
+        signup={account.mode === "signup"}
+        authToken={account.authToken}
+        onComplete={handleOAuthComplete}
+      />
     );
   }
 
