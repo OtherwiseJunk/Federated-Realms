@@ -89,40 +89,55 @@ const transferHandler = new TransferHandler(
 await world.initialize();
 await bluesky.initialize();
 
-// Initialize AT Proto services (skip in dev mode or if PDS is not configured)
-if (!DEV_MODE && config.atproto.serverPassword) {
+// Initialize AT Proto player auth in production. Server identity/federation is
+// optional and requires SERVER_PASSWORD, but player OAuth does not.
+if (!DEV_MODE) {
   try {
-    await serverIdentity.initialize(config.atproto, config.name, config.description);
     await oauthClient.initialize(config.atproto, {
       stateStore: new SqliteSimpleStore(stateDb, "oauth_state"),
       sessionStore: new SqliteSimpleStore(stateDb, "oauth_session"),
     });
-    sessions.setServerIdentity(serverIdentity);
-
-    // Publish world data as AT Proto records
-    const publisher = new WorldPublisher(serverIdentity.agent, serverIdentity.did);
-    const { portalCount } = await publisher.publishAll(world);
-
-    // Federation: publish registration and seed known servers
-    federation = new FederationManager(
-      serverIdentity,
-      config.federation,
-      config.atproto,
-      config.name,
-      config.description,
-    );
-    await federation.publishRegistration(portalCount, 0);
-    await federation.seedFromConfig();
-    transferHandler.setFederationManager(federation);
-
-    // Cross-server chat relay
-    chatRelay = new ChatRelayService(serverIdentity, federation, sessions);
   } catch (err) {
     console.warn(
-      "   AT Proto initialization failed:",
+      "   OAuth initialization failed:",
       err instanceof Error ? (err.stack ?? err.message) : err,
     );
-    console.warn("   Running without AT Proto auth (set DEV_MODE=true to suppress)");
+  }
+
+  warnIfPublicUrlLooksLocal(config.atproto.publicUrl);
+
+  if (config.atproto.serverPassword) {
+    try {
+      await serverIdentity.initialize(config.atproto, config.name, config.description);
+      sessions.setServerIdentity(serverIdentity);
+
+      // Publish world data as AT Proto records
+      const publisher = new WorldPublisher(serverIdentity.agent, serverIdentity.did);
+      const { portalCount } = await publisher.publishAll(world);
+
+      // Federation: publish registration and seed known servers
+      federation = new FederationManager(
+        serverIdentity,
+        config.federation,
+        config.atproto,
+        config.name,
+        config.description,
+      );
+      await federation.publishRegistration(portalCount, 0);
+      await federation.seedFromConfig();
+      transferHandler.setFederationManager(federation);
+
+      // Cross-server chat relay
+      chatRelay = new ChatRelayService(serverIdentity, federation, sessions);
+    } catch (err) {
+      console.warn(
+        "   Server identity/federation initialization failed:",
+        err instanceof Error ? (err.stack ?? err.message) : err,
+      );
+      console.warn("   Player OAuth may still work; federation features are disabled");
+    }
+  } else {
+    console.warn("   SERVER_PASSWORD not set; server identity and federation are disabled");
   }
 }
 
@@ -138,6 +153,19 @@ function authSuccessHtml(message: string): string {
 <style>body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
 .box{text-align:center;padding:2rem;border:1px solid #4a4a6a;border-radius:8px}h1{color:#7fdbca;margin-bottom:1rem}p{color:#c3c3c3}</style>
 </head><body><div class="box"><h1>Federated Realms</h1><p>${message}</p></div></body></html>`;
+}
+
+function warnIfPublicUrlLooksLocal(publicUrl: string): void {
+  try {
+    const parsed = new URL(publicUrl);
+    if (["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname)) {
+      console.warn(
+        `   PUBLIC_URL is ${publicUrl}; deployed OAuth needs the external HTTPS URL (for example https://mud.cacheblasters.com)`,
+      );
+    }
+  } catch {
+    console.warn(`   PUBLIC_URL is not a valid URL: ${publicUrl}`);
+  }
 }
 
 function broadcast(roomId: string, msg: ServerMessage, excludeSessionId?: string): void {
@@ -355,9 +383,13 @@ const server = Bun.serve<SessionData>({
         if (!handle && !signup) {
           return Response.json({ error: "handle parameter required" }, { status: 400 });
         }
-        if (signup && !oauthClient.initialized) {
+        if (!oauthClient.initialized) {
           return Response.json(
-            { error: "Signup is not available on this server" },
+            {
+              error: signup
+                ? "Signup is not available on this server"
+                : "OAuth is not available on this server",
+            },
             { status: 503 },
           );
         }
@@ -1027,8 +1059,16 @@ console.log(`   WebSocket: ws://${server.hostname}:${server.port}/ws`);
 console.log(`   Health: http://${server.hostname}:${server.port}/health`);
 if (DEV_MODE) {
   console.log(`   Mode: DEV (no auth required)`);
-} else if (serverIdentity.did) {
-  console.log(`   Server DID: ${serverIdentity.did}`);
-  console.log(`   OAuth: ${config.atproto.publicUrl}/oauth/client-metadata.json`);
+} else {
+  if (serverIdentity.did) {
+    console.log(`   Server DID: ${serverIdentity.did}`);
+  }
+  console.log(
+    `   OAuth: ${
+      oauthClient.initialized
+        ? `${config.atproto.publicUrl}/oauth/client-metadata.json`
+        : "disabled"
+    }`,
+  );
 }
 console.log();
