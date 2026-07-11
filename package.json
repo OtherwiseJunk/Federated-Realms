@@ -13,7 +13,7 @@
     "test": "bun test --recursive",
     "test:unit": "bun test --recursive packages/",
     "test:e2e": "bun test --retry 5 --recursive apps/realms-server/test/",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun run --filter '*' typecheck",
     "lint": "oxlint --deny-warnings packages/ apps/",
     "lint:fix": "oxlint --deny-warnings --fix packages/ apps/",
     "fmt": "oxfmt --write packages/ apps/",
