@@ -1,7 +1,6 @@
 import type { CommandContext } from "./index.js";
 import { sendNarrative } from "./index.js";
-import type { CharacterSession } from "../entities/character-session.js";
-import type { WorldManager } from "../world/world-manager.js";
+import type { CharacterSession, WorldManager } from "@realms/server-sdk";
 
 interface MapRoom {
   id: string;

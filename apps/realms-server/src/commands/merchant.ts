@@ -1,7 +1,7 @@
 import type { ParsedCommand } from "@realms/common";
 import { createItemInstance, xpToNextLevel } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
-import type { CharacterSession } from "../entities/character-session.js";
+import type { CharacterSession } from "@realms/server-sdk";
 import type { CommandContext } from "./index.js";
 import { sendNarrative } from "./index.js";
 
