@@ -1,7 +1,7 @@
 import type { ParsedCommand } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
 import type { CommandContext } from "./index.js";
-import { sendNarrative } from "./index.js";
+import { recordQuestCollect, sendNarrative } from "./index.js";
 
 export function handleCrafting(cmd: ParsedCommand, ctx: CommandContext): void {
   switch (cmd.verb) {
@@ -112,6 +112,10 @@ function handleCraft(cmd: ParsedCommand, ctx: CommandContext): void {
     return;
   }
 
+  if (result.outputItemId) {
+    recordQuestCollect(ctx, result.outputItemId, result.outputCount ?? 1);
+  }
+
   sendNarrative(
     session,
     `You craft: ${result.outputName} (x${result.outputCount}) — added to inventory.`,
@@ -150,6 +154,10 @@ function handleGather(cmd: ParsedCommand, ctx: CommandContext): void {
       "info",
     );
     return;
+  }
+
+  for (const gatheredItem of result.items) {
+    recordQuestCollect(ctx, gatheredItem.itemId, gatheredItem.count);
   }
 
   const gained = result.items.map((i) => `${i.name} (x${i.count})`).join(", ");

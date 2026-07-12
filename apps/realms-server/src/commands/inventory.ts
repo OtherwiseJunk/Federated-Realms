@@ -1,7 +1,7 @@
 import type { ParsedCommand } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
 import type { CommandContext } from "./index.js";
-import { sendNarrative } from "./index.js";
+import { recordQuestCollect, sendNarrative } from "./index.js";
 
 export function handleInventory(cmd: ParsedCommand, ctx: CommandContext): void {
   switch (cmd.verb) {
@@ -70,16 +70,7 @@ function handleTake(cmd: ParsedCommand, ctx: CommandContext): void {
   session.addItem(item);
   session.attestations.recordItemGrant(item.definitionId);
 
-  // Quest collect tracking
-  const collectUpdates = ctx.world.questManager.recordCollect(
-    session.characterDid,
-    item.definitionId,
-    item.quantity,
-  );
-  for (const questId of collectUpdates) {
-    const payload = ctx.world.questManager.buildUpdatePayload(session.characterDid, questId);
-    if (payload) session.send(encodeMessage(payload));
-  }
+  recordQuestCollect(ctx, item.definitionId, item.quantity);
 
   const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
   sendNarrative(session, `You pick up ${item.name}${qty}.`, "info");

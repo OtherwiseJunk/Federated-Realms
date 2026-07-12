@@ -3,7 +3,7 @@ import { createItemInstance, xpToNextLevel } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
 import type { CharacterSession } from "@realms/server-sdk";
 import type { CommandContext } from "./index.js";
-import { sendNarrative } from "./index.js";
+import { recordQuestCollect, sendNarrative } from "./index.js";
 
 const SELL_MULTIPLIER = 0.5; // sell at 50% of item value
 
@@ -122,6 +122,7 @@ function handleBuy(cmd: ParsedCommand, ctx: CommandContext): void {
   const item = createItemInstance(matchedId, matchedDef, 1);
   session.addItem(item);
   session.attestations.recordItemGrant(matchedId);
+  recordQuestCollect(ctx, matchedId, 1);
 
   sendNarrative(
     session,

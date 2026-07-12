@@ -2,7 +2,7 @@ import type { ParsedCommand } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
 import { xpToNextLevel, createItemInstance } from "@realms/common";
 import type { CommandContext } from "./index.js";
-import { sendNarrative } from "./index.js";
+import { recordQuestCollect, sendNarrative } from "./index.js";
 import type { QuestManager } from "@realms/server-sdk";
 
 export function handleQuest(cmd: ParsedCommand, ctx: CommandContext): void {
@@ -170,6 +170,7 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
           const item = createItemInstance(itemId, itemDef, 1);
           session.addItem(item);
           session.attestations.recordItemGrant(itemId);
+          recordQuestCollect(ctx, itemId, 1);
           rewardParts.push(item.name);
         }
       }
