@@ -46,6 +46,7 @@ export class SessionManager {
     );
     this.sessions.set(sessionId, session);
     this.didToSession.set(characterDid, sessionId);
+    this.touch(sessionId);
     return session;
   }
 
@@ -56,6 +57,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.ws = ws;
+      this.touch(sessionId);
     }
     return session;
   }
