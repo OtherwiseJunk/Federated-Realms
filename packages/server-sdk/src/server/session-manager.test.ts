@@ -65,6 +65,47 @@ describe("SessionManager idle tracking", () => {
     expect(manager.getIdleSessions()).toHaveLength(0);
   });
 
+  test("removeSession invokes onRemove and closes the socket", () => {
+    const manager = new SessionManager();
+    const events: string[] = [];
+    manager.onRemove = (session) => events.push(`removed:${session.sessionId}`);
+    const session = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
+    const ws = { close: () => events.push("ws-closed") };
+    manager.attachWebSocket(session.sessionId, ws as never);
+
+    manager.removeSession(session.sessionId);
+
+    expect(events).toEqual([`removed:${session.sessionId}`, "ws-closed"]);
+  });
+
+  test("onRemove fires at most once per session", () => {
+    const manager = new SessionManager();
+    let calls = 0;
+    manager.onRemove = () => calls++;
+    const session = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
+
+    manager.removeSession(session.sessionId);
+    manager.removeSession(session.sessionId);
+
+    expect(calls).toBe(1);
+  });
+
+  test("duplicate login removes the old session through onRemove", () => {
+    const manager = new SessionManager();
+    const removed: string[] = [];
+    manager.onRemove = (session) => removed.push(session.sessionId);
+    const first = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
+    let oldSocketClosed = false;
+    manager.attachWebSocket(first.sessionId, { close: () => (oldSocketClosed = true) } as never);
+
+    const second = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
+
+    expect(removed).toEqual([first.sessionId]);
+    expect(oldSocketClosed).toBe(true);
+    expect(manager.getSession(second.sessionId)).toBeDefined();
+    expect(manager.getSessionByDid("did:plc:test")?.sessionId).toBe(second.sessionId);
+  });
+
   test("removeSession clears activity tracking", () => {
     const manager = new SessionManager();
     const session = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
