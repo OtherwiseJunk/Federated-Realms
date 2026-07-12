@@ -44,6 +44,11 @@ type Main = {
    * Whether this quest can be accepted again after completion
    */
   repeatable?: boolean;
+
+  /**
+   * Whether collect-objective items are removed from the player's inventory on turn-in (default true)
+   */
+  consumeItems?: boolean;
   tags?: string[];
 };
 
@@ -63,6 +68,7 @@ const main = l.record<"any", Main>(
     objectives: l.array(l.ref<Objective>((() => objective) as any)),
     rewards: l.optional(l.ref<Rewards>((() => rewards) as any)),
     repeatable: l.optional(l.boolean()),
+    consumeItems: l.optional(l.boolean()),
     tags: l.optional(l.array(l.string())),
   }),
 );

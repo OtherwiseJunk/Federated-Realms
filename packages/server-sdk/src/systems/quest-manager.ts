@@ -155,13 +155,28 @@ export class QuestManager {
     return this.progress.get(characterDid)?.delete(questId) ?? false;
   }
 
-  /** Complete a quest, return the definition for reward processing */
-  completeQuest(characterDid: string, questId: string): QuestDefinition | null {
+  /**
+   * Complete a quest, return the definition for reward processing.
+   * Unless the definition sets `consumeItems: false`, `consume` is invoked
+   * for each collect objective so the caller can remove the turned-in items.
+   */
+  completeQuest(
+    characterDid: string,
+    questId: string,
+    consume?: (itemDefId: string, count: number) => void,
+  ): QuestDefinition | null {
     const prog = this.getProgress(characterDid, questId);
     const def = this.definitions.get(questId);
     if (!prog || !def) return null;
     prog.status = "completed";
     prog.completedAt = new Date().toISOString();
+    if (consume && def.consumeItems !== false) {
+      for (const obj of def.objectives) {
+        if (obj.type === "collect" && obj.target) {
+          consume(obj.target, obj.count ?? 1);
+        }
+      }
+    }
     return def;
   }
 

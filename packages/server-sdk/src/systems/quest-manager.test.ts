@@ -224,6 +224,44 @@ describe("QuestManager", () => {
       expect(qm.getCompletableQuests(PLAYER, "npc-elder")).toHaveLength(1);
     });
 
+    test("completeQuest consumes collect items by default", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
+            { type: "talk", target: "npc-elder", description: "Report back", count: 1 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+      const consumed: Array<[string, number]> = [];
+
+      qm.completeQuest(PLAYER, "q1", (itemDefId, count) => consumed.push([itemDefId, count]));
+
+      expect(consumed).toEqual([["herb", 2]]);
+    });
+
+    test("completeQuest with consumeItems false leaves inventory alone", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          consumeItems: false,
+          objectives: [
+            { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+      const consumed: Array<[string, number]> = [];
+
+      qm.completeQuest(PLAYER, "q1", (itemDefId, count) => consumed.push([itemDefId, count]));
+
+      expect(consumed).toEqual([]);
+    });
+
     test("acceptQuest inventory sync respects objective order", () => {
       const qm = new QuestManager();
       qm.registerDefinition(

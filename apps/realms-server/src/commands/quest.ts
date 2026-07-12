@@ -146,9 +146,16 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
     );
     if (completable.length === 0) continue;
 
-    // Complete the first completable quest
+    // Complete the first completable quest, consuming turned-in items
     const { questId, def } = completable[0];
-    const completed = world.questManager.completeQuest(session.characterDid, questId);
+    let itemsConsumed = false;
+    const completed = world.questManager.completeQuest(
+      session.characterDid,
+      questId,
+      (itemDefId, count) => {
+        itemsConsumed = session.removeItemByDefId(itemDefId, count) || itemsConsumed;
+      },
+    );
     if (!completed) continue;
 
     // Attest quest completion
@@ -207,8 +214,8 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
       }),
     );
 
-    // Send inventory update if items were granted
-    if (rewards?.items?.length) {
+    // Send inventory update if items were granted or consumed
+    if (rewards?.items?.length || itemsConsumed) {
       session.send(encodeMessage({ type: "inventory_update", inventory: session.inventory }));
     }
 
