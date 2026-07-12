@@ -144,7 +144,7 @@ describe("QuestManager", () => {
       expect(qm.getProgress(PLAYER, "q1")!.objectives[1].done).toBe(true);
     });
 
-    test("recordCollect with count", () => {
+    test("recordCollect tracks count on hand, not accumulated pickups", () => {
       const qm = new QuestManager();
       qm.registerDefinition(
         "q1",
@@ -159,9 +159,61 @@ describe("QuestManager", () => {
       qm.recordCollect(PLAYER, "herb", 3);
       expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(3);
 
-      qm.recordCollect(PLAYER, "herb", 3);
+      // Drop + re-take: still only 3 on hand — progress must not double-count
+      expect(qm.recordCollect(PLAYER, "herb", 3)).toEqual([]);
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(3);
+
+      qm.recordCollect(PLAYER, "herb", 5);
       expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(5);
       expect(qm.getProgress(PLAYER, "q1")!.objectives[0].done).toBe(true);
+    });
+
+    test("recordCollect caps at required even with more on hand", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordCollect(PLAYER, "herb", 99);
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(5);
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[0].done).toBe(true);
+    });
+
+    test("acceptQuest syncs collect objectives from items already on hand", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
+          ],
+        } as any),
+      );
+
+      qm.acceptQuest(PLAYER, "q1", (itemDefId) => (itemDefId === "herb" ? 2 : 0));
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(2);
+    });
+
+    test("acceptQuest inventory sync respects objective order", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
+            { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
+          ],
+        } as any),
+      );
+
+      qm.acceptQuest(PLAYER, "q1", () => 5);
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
     });
 
     test("recordVisit tracks room visits", () => {

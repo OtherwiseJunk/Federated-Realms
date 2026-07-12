@@ -113,7 +113,7 @@ function handleCraft(cmd: ParsedCommand, ctx: CommandContext): void {
   }
 
   if (result.outputItemId) {
-    recordQuestCollect(ctx, result.outputItemId, result.outputCount ?? 1);
+    recordQuestCollect(ctx, result.outputItemId);
   }
 
   sendNarrative(
@@ -157,7 +157,7 @@ function handleGather(cmd: ParsedCommand, ctx: CommandContext): void {
   }
 
   for (const gatheredItem of result.items) {
-    recordQuestCollect(ctx, gatheredItem.itemId, gatheredItem.count);
+    recordQuestCollect(ctx, gatheredItem.itemId);
   }
 
   const gained = result.items.map((i) => `${i.name} (x${i.count})`).join(", ");

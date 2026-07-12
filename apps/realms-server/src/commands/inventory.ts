@@ -70,7 +70,7 @@ function handleTake(cmd: ParsedCommand, ctx: CommandContext): void {
   session.addItem(item);
   session.attestations.recordItemGrant(item.definitionId);
 
-  recordQuestCollect(ctx, item.definitionId, item.quantity);
+  recordQuestCollect(ctx, item.definitionId);
 
   const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
   sendNarrative(session, `You pick up ${item.name}${qty}.`, "info");

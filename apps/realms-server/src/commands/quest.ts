@@ -89,7 +89,9 @@ export function handleAcceptQuest(cmd: ParsedCommand, ctx: CommandContext): void
     );
     const match = available.find(({ def }) => def.name.toLowerCase().includes(questName));
     if (match) {
-      world.questManager.acceptQuest(session.characterDid, match.questId);
+      world.questManager.acceptQuest(session.characterDid, match.questId, (itemDefId) =>
+        session.countItem(itemDefId),
+      );
       const firstObj = match.def.objectives[0];
       const lines = [
         `You accept the quest: ${match.def.name}`,
@@ -170,7 +172,7 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
           const item = createItemInstance(itemId, itemDef, 1);
           session.addItem(item);
           session.attestations.recordItemGrant(itemId);
-          recordQuestCollect(ctx, itemId, 1);
+          recordQuestCollect(ctx, itemId);
           rewardParts.push(item.name);
         }
       }

@@ -122,7 +122,7 @@ function handleBuy(cmd: ParsedCommand, ctx: CommandContext): void {
   const item = createItemInstance(matchedId, matchedDef, 1);
   session.addItem(item);
   session.attestations.recordItemGrant(matchedId);
-  recordQuestCollect(ctx, matchedId, 1);
+  recordQuestCollect(ctx, matchedId);
 
   sendNarrative(
     session,
