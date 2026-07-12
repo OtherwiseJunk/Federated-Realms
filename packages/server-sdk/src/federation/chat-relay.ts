@@ -26,6 +26,7 @@ interface LocateResult {
 export class ChatRelayService {
   /** Rate limit: max N tells per window per session */
   private rateLimits = new Map<string, number[]>();
+  private lastPrune = 0;
   private static RATE_MAX = 5;
   private static RATE_WINDOW = 10_000; // 10 seconds
 
@@ -131,12 +132,25 @@ export class ChatRelayService {
    */
   isRateLimited(sessionId: string): boolean {
     const now = Date.now();
+    this.pruneStale(now);
     const timestamps = this.rateLimits.get(sessionId) ?? [];
     const recent = timestamps.filter((t) => now - t < ChatRelayService.RATE_WINDOW);
     if (recent.length >= ChatRelayService.RATE_MAX) return true;
     recent.push(now);
     this.rateLimits.set(sessionId, recent);
     return false;
+  }
+
+  /** Drop sessions whose newest tell is outside the window; at most once per window */
+  private pruneStale(now: number): void {
+    if (now - this.lastPrune < ChatRelayService.RATE_WINDOW) return;
+    this.lastPrune = now;
+    for (const [sessionId, timestamps] of this.rateLimits) {
+      const newest = timestamps[timestamps.length - 1] ?? 0;
+      if (now - newest >= ChatRelayService.RATE_WINDOW) {
+        this.rateLimits.delete(sessionId);
+      }
+    }
   }
 
   private async locatePlayer(server: KnownServer, name: string): Promise<LocateResult> {

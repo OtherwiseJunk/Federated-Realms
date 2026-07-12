@@ -64,4 +64,13 @@ describe("SessionManager idle tracking", () => {
     setSystemTime(new Date(start + 31 * MINUTE));
     expect(manager.getIdleSessions()).toHaveLength(0);
   });
+
+  test("removeSession clears activity tracking", () => {
+    const manager = new SessionManager();
+    const session = manager.createSession("did:plc:test", makeProfile(), "test-area:spawn");
+    manager.removeSession(session.sessionId);
+
+    const tracking = (manager as unknown as { lastActivity: Map<string, number> }).lastActivity;
+    expect(tracking.has(session.sessionId)).toBe(false);
+  });
 });

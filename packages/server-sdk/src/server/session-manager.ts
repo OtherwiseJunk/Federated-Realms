@@ -84,6 +84,7 @@ export class SessionManager {
     if (session) {
       this.sessions.delete(sessionId);
       this.didToSession.delete(session.characterDid);
+      this.lastActivity.delete(sessionId);
       session.ws = null;
     }
     return session;
