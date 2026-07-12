@@ -44,6 +44,70 @@ describe("decodeClientMessage", () => {
   test("returns null for missing type", () => {
     expect(decodeClientMessage('{"command":"look"}')).toBeNull();
   });
+
+  test("returns null for unknown type", () => {
+    expect(decodeClientMessage('{"type":"hax"}')).toBeNull();
+  });
+
+  test("returns null for command message missing fields", () => {
+    expect(decodeClientMessage('{"type":"command"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"command","id":"1"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"command","id":"1","command":"look"}')).toBeNull();
+  });
+
+  test("returns null for command args that are not an array of strings", () => {
+    expect(
+      decodeClientMessage('{"type":"command","id":"1","command":"look","args":"north"}'),
+    ).toBeNull();
+    expect(
+      decodeClientMessage('{"type":"command","id":"1","command":"look","args":[1]}'),
+    ).toBeNull();
+    expect(
+      decodeClientMessage('{"type":"command","id":"1","command":"look","args":[null]}'),
+    ).toBeNull();
+  });
+
+  test("returns null for move message with missing or non-string direction", () => {
+    expect(decodeClientMessage('{"type":"move","id":"1"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"move","id":"1","direction":5}')).toBeNull();
+  });
+
+  test("returns null for chat message missing fields", () => {
+    expect(decodeClientMessage('{"type":"chat","channel":"room"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"chat","message":"hi"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"chat","channel":"room","message":42}')).toBeNull();
+  });
+
+  test("returns null for interact message missing fields", () => {
+    expect(decodeClientMessage('{"type":"interact","id":"1"}')).toBeNull();
+    expect(decodeClientMessage('{"type":"interact","id":"1","targetId":"npc"}')).toBeNull();
+  });
+
+  test("decodes valid interact message", () => {
+    const msg = decodeClientMessage(
+      '{"type":"interact","id":"1","targetId":"npc","action":"talk"}',
+    );
+    expect(msg?.type).toBe("interact");
+  });
+
+  test("decodes adaptation_response with and without optional fields", () => {
+    expect(decodeClientMessage('{"type":"adaptation_response"}')).toEqual({
+      type: "adaptation_response",
+    });
+    expect(decodeClientMessage('{"type":"adaptation_response","classId":"mage"}')).toEqual({
+      type: "adaptation_response",
+      classId: "mage",
+    });
+  });
+
+  test("returns null for adaptation_response with non-string optional fields", () => {
+    expect(decodeClientMessage('{"type":"adaptation_response","classId":5}')).toBeNull();
+    expect(decodeClientMessage('{"type":"adaptation_response","raceId":{}}')).toBeNull();
+  });
+
+  test("decodes ping", () => {
+    expect(decodeClientMessage('{"type":"ping"}')).toEqual({ type: "ping" });
+  });
 });
 
 describe("decodeServerMessage", () => {

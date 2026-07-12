@@ -108,10 +108,47 @@ export function encodeMessage(msg: ClientMessage | ServerMessage): string {
   return JSON.stringify(msg);
 }
 
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
+function isStringOrUndefined(v: unknown): v is string | undefined {
+  return v === undefined || typeof v === "string";
+}
+
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every(isString);
+}
+
+/** Per-variant field checks — payloads come from untrusted peers */
+function isValidClientMessage(msg: Record<string, unknown>): boolean {
+  switch (msg.type) {
+    case "command":
+      return isString(msg.id) && isString(msg.command) && isStringArray(msg.args);
+    case "move":
+      return isString(msg.id) && isString(msg.direction);
+    case "chat":
+      return isString(msg.channel) && isString(msg.message);
+    case "interact":
+      return isString(msg.id) && isString(msg.targetId) && isString(msg.action);
+    case "adaptation_response":
+      return isStringOrUndefined(msg.classId) && isStringOrUndefined(msg.raceId);
+    case "ping":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function decodeClientMessage(data: string): ClientMessage | null {
   try {
     const parsed = JSON.parse(data);
-    if (typeof parsed === "object" && parsed !== null && typeof parsed.type === "string") {
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.type === "string" &&
+      isValidClientMessage(parsed)
+    ) {
       return parsed as ClientMessage;
     }
     return null;
