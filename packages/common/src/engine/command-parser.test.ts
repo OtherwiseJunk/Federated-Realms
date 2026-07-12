@@ -137,6 +137,30 @@ describe("parseCommand", () => {
       expect(cmd.args).toEqual(["north"]);
     });
   });
+
+  describe("prototype-chain safety", () => {
+    test("toString is not treated as an alias", () => {
+      const cmd = parseCommand("toString");
+      expect(cmd.verb).toBe("tostring");
+    });
+
+    test("constructor is not treated as an alias", () => {
+      const cmd = parseCommand("constructor");
+      expect(cmd.verb).toBe("constructor");
+    });
+
+    test("__proto__ is not treated as an alias", () => {
+      const cmd = parseCommand("__proto__");
+      expect(cmd.verb).toBe("__proto__");
+    });
+
+    test("go constructor is not treated as a direction", () => {
+      const cmd = parseCommand("go constructor");
+      expect(cmd.verb).toBe("go");
+      expect(cmd.args).toEqual(["constructor"]);
+      expect(cmd.target).toBe("constructor");
+    });
+  });
 });
 
 describe("getCommandHelp", () => {

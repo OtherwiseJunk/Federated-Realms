@@ -93,8 +93,8 @@ export function parseCommand(input: string): ParsedCommand {
     }
   }
 
-  // Apply aliases
-  if (verb in ALIASES) {
+  // Apply aliases (hasOwn so inherited Object.prototype members don't resolve)
+  if (Object.hasOwn(ALIASES, verb)) {
     verb = ALIASES[verb];
   }
 

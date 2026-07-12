@@ -37,7 +37,9 @@ export const OPPOSITE_DIRECTION: Record<Direction, Direction> = {
 };
 
 export function resolveDirection(input: string): Direction | undefined {
-  return DIRECTION_ALIASES[input.toLowerCase()];
+  const key = input.toLowerCase();
+  // hasOwn so inherited Object.prototype members don't resolve as directions
+  return Object.hasOwn(DIRECTION_ALIASES, key) ? DIRECTION_ALIASES[key] : undefined;
 }
 
 export function isDirection(input: string): input is Direction {
