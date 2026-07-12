@@ -33,6 +33,7 @@ export function handleQuestList(cmd: ParsedCommand, ctx: CommandContext): void {
       const completable = world.questManager.getCompletableQuests(
         session.characterDid,
         npc.definitionId,
+        (itemDefId) => session.countItem(itemDefId),
       );
       if (available.length > 0 || completable.length > 0) {
         const npcName = npc.name;
@@ -141,6 +142,7 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
     const completable = world.questManager.getCompletableQuests(
       session.characterDid,
       npc.definitionId,
+      (itemDefId) => session.countItem(itemDefId),
     );
     if (completable.length === 0) continue;
 

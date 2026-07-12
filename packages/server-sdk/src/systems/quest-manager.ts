@@ -88,12 +88,25 @@ export class QuestManager {
   getCompletableQuests(
     characterDid: string,
     npcDefId: string,
+    countOnHand?: (itemDefId: string) => number,
   ): Array<{ questId: string; def: QuestDefinition; progress: ActiveQuestState }> {
     const active = this.getActiveQuests(characterDid);
     return active.filter(({ def, progress }) => {
       const turnInNpc = def.turnIn ?? def.giver;
       if (turnInNpc !== npcDefId) return false;
-      return progress.objectives.every((o) => o.done);
+      if (!progress.objectives.every((o) => o.done)) return false;
+      // A collect objective marked done can go stale if the player later
+      // dropped or sold the items — re-verify possession at turn-in
+      if (countOnHand) {
+        for (let i = 0; i < def.objectives.length; i++) {
+          const obj = def.objectives[i];
+          if (obj.type !== "collect" || !obj.target) continue;
+          if (countOnHand(obj.target) < (progress.objectives[i]?.required ?? obj.count ?? 1)) {
+            return false;
+          }
+        }
+      }
+      return true;
     });
   }
 

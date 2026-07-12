@@ -200,6 +200,30 @@ describe("QuestManager", () => {
       expect(qm.getProgress(PLAYER, "q1")!.objectives[0].current).toBe(2);
     });
 
+    test("turn-in requires collect items still on hand", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+      qm.recordCollect(PLAYER, "herb", 2);
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[0].done).toBe(true);
+
+      // Player dropped the herbs after the objective completed
+      expect(qm.getCompletableQuests(PLAYER, "npc-elder", () => 0)).toHaveLength(0);
+
+      // With the herbs back on hand, turn-in is allowed again
+      expect(qm.getCompletableQuests(PLAYER, "npc-elder", () => 2)).toHaveLength(1);
+
+      // Without an inventory lookup, behavior is unchanged
+      expect(qm.getCompletableQuests(PLAYER, "npc-elder")).toHaveLength(1);
+    });
+
     test("acceptQuest inventory sync respects objective order", () => {
       const qm = new QuestManager();
       qm.registerDefinition(
