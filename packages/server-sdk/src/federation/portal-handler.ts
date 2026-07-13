@@ -99,24 +99,25 @@ export class PortalHandler {
       | undefined;
     const attestations = serverExt?.attestations ?? [];
 
-    // Sign transfer JWT
-    const characterHash = new Bun.CryptoHasher("sha256")
-      .update(JSON.stringify(snapshot))
-      .digest("hex");
-
-    const now = Math.floor(Date.now() / 1000);
-    const token = await this.serverIdentity.signTransferToken({
-      iss: this.serverIdentity.did,
-      sub: session.characterDid,
-      aud: serverDid,
-      iat: now,
-      exp: now + 60,
-      characterHash,
-      targetRoom: roomId,
-    });
-
-    // Call target server's transfer endpoint
+    // Sign the transfer JWT and call the target. Signing is inside the try so
+    // a degraded server (no signing key) surfaces the friendly failure message
+    // instead of throwing an unhandled rejection.
     try {
+      const characterHash = new Bun.CryptoHasher("sha256")
+        .update(JSON.stringify(snapshot))
+        .digest("hex");
+
+      const now = Math.floor(Date.now() / 1000);
+      const token = await this.serverIdentity.signTransferToken({
+        iss: this.serverIdentity.did,
+        sub: session.characterDid,
+        aud: serverDid,
+        iat: now,
+        exp: now + 60,
+        characterHash,
+        targetRoom: roomId,
+      });
+
       const response = await fetch(xrpcUrl(target.xrpcEndpoint, NSID.FederationTransfer), {
         method: "POST",
         headers: { "Content-Type": "application/json" },

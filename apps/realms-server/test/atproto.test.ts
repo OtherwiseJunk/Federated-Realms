@@ -619,6 +619,41 @@ describe("attestation tracker", () => {
     expect(attestations.length).toBe(0);
   });
 
+  test("flush is a no-op when the identity has a did but no signing key", async () => {
+    // Degraded server: signing key failed to init, so canSign is false even
+    // though the server has a DID. flush must not throw or retry forever.
+    const degraded = new ServerIdentity();
+    degraded.did = "did:plc:degradedserver";
+    expect(degraded.canSign).toBe(false);
+
+    const tracker = new AttestationTracker(degraded, "did:plc:player1");
+    tracker.recordLevelUp(5, 500);
+    tracker.recordQuestComplete("kill-rats");
+
+    const attestations = await tracker.finalize();
+    expect(attestations.length).toBe(0);
+  });
+
+  test("canSign reflects signing-key presence", async () => {
+    const withoutKey = new ServerIdentity();
+    withoutKey.did = "did:plc:nokey";
+    expect(withoutKey.canSign).toBe(false);
+
+    const withKey = new ServerIdentity();
+    withKey.did = "did:plc:haskey";
+    await withKey.initSigningKeyOnly();
+    expect(withKey.canSign).toBe(true);
+  });
+
+  test("signAttestation throws a descriptive error without a signing key", async () => {
+    const degraded = new ServerIdentity();
+    degraded.did = "did:plc:degraded";
+
+    await expect(degraded.signAttestation("did:plc:player1", { level: 2 })).rejects.toThrow(
+      /signing key is unavailable/i,
+    );
+  });
+
   test("multiple high-value events produce multiple attestations", async () => {
     const tracker = new AttestationTracker(identity, "did:plc:player1");
 
