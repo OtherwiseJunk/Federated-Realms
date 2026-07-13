@@ -179,7 +179,7 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
         const itemDef = world.areaManager.getItemDefinition(itemId);
         if (itemDef) {
           const item = createItemInstance(itemId, itemDef, 1);
-          session.addItem(item);
+          session.addItem(item, itemDef);
           session.attestations.recordItemGrant(itemId);
           recordQuestCollect(ctx, itemId);
           rewardParts.push(item.name);

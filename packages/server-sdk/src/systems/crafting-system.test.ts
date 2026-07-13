@@ -21,7 +21,7 @@ function makeSession(): CharacterSession {
 }
 
 function makeItemDef(name: string): ItemDefinition {
-  return { name, type: "material", description: `A ${name}.`, stackable: true };
+  return { name, type: "material", description: `A ${name}.`, stackable: true, maxStack: 99 };
 }
 
 const ITEM_DEFS = new Map<string, ItemDefinition>([
@@ -61,9 +61,8 @@ describe("CraftingSystem craft", () => {
     } as RecipeDef;
     crafting.registerRecipe("test-area:dream-potion", recipe);
     const session = makeSession();
-    session.addItem(
-      createItemInstance("test-area:mushroom", ITEM_DEFS.get("test-area:mushroom")!, 2),
-    );
+    const mushroomDef = ITEM_DEFS.get("test-area:mushroom")!;
+    session.addItem(createItemInstance("test-area:mushroom", mushroomDef, 2), mushroomDef);
 
     const result = crafting.craft(session, { flags: [] } as never, "dream potion", ITEM_DEFS);
 

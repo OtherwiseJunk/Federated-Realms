@@ -779,7 +779,7 @@ export class CombatSystem {
       lines.push(`${npc.name} drops: ${lootNames}`);
       for (const item of loot) {
         const def = getItemDef(item.definitionId);
-        room.addGroundItem(item, def?.stackable ?? false);
+        room.addGroundItem(item, def);
       }
     }
 

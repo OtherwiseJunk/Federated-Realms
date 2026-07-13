@@ -120,7 +120,7 @@ function handleBuy(cmd: ParsedCommand, ctx: CommandContext): void {
 
   // Create item instance and add to inventory
   const item = createItemInstance(matchedId, matchedDef, 1);
-  session.addItem(item);
+  session.addItem(item, matchedDef);
   session.attestations.recordItemGrant(matchedId);
   recordQuestCollect(ctx, matchedId);
 
