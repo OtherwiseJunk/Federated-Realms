@@ -64,16 +64,18 @@ export class CombatSystem {
     }
   }
 
+  /** Bonus to player AC while defending. */
+  private static readonly DEFEND_AC_BONUS = 4;
+
   /** All combat NPCs in the room retaliate against the player. Returns narrative lines. */
   private allNpcsRetaliate(session: CharacterSession): string[] {
     const combatNpcs = this.getCombatNpcs(session);
     if (combatNpcs.length === 0) return [];
 
-    // Apply defend bonus before all attacks
-    const originalDex = session.state.attributes.dex ?? 10;
-    if (session.isDefending) {
-      session.state.attributes.dex = originalDex + 8; // +4 AC = +8 dex
-    }
+    // Defending grants a temporary AC bonus, passed explicitly to the resolver.
+    // We do NOT mutate session attributes: an exception mid-loop would otherwise
+    // leave base dex permanently inflated (issue #56).
+    const acBonus = session.isDefending ? CombatSystem.DEFEND_AC_BONUS : 0;
 
     const allLines: string[] = [];
     for (const npc of combatNpcs) {
@@ -83,6 +85,7 @@ export class CombatSystem {
         npc.name,
         session.state.attributes,
         session.state.equipment,
+        acBonus,
       );
 
       if (npcAttack.hit) {
@@ -103,11 +106,8 @@ export class CombatSystem {
       if (session.isDead) break; // stop if player dies mid-round
     }
 
-    // Restore dex and clear defend
-    if (session.isDefending) {
-      session.state.attributes.dex = originalDex;
-      session.isDefending = false;
-    }
+    // The defend bonus lasts for this retaliation round only.
+    session.isDefending = false;
 
     return allLines;
   }
