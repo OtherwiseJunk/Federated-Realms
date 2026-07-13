@@ -112,6 +112,7 @@ interface QuestDef {
   ordered?: boolean;
   rewards?: QuestRewardsDef;
   repeatable?: boolean;
+  consumeItems?: boolean;
   tags?: string[];
 }
 
@@ -347,7 +348,7 @@ export class AreaManager {
             type: o.type as any,
             description: o.description,
             target: o.target ? prefixId(o.target) : undefined,
-            count: o.count,
+            count: o.count ?? 1,
           })),
           ordered: q.ordered ?? true,
           rewards: q.rewards
@@ -357,7 +358,8 @@ export class AreaManager {
                 items: q.rewards.items?.map(prefixId),
               }
             : undefined,
-          repeatable: q.repeatable,
+          repeatable: q.repeatable ?? false,
+          consumeItems: q.consumeItems ?? true,
           tags: q.tags,
         });
         questCount++;

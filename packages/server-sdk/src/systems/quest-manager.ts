@@ -101,7 +101,7 @@ export class QuestManager {
         for (let i = 0; i < def.objectives.length; i++) {
           const obj = def.objectives[i];
           if (obj.type !== "collect" || !obj.target) continue;
-          if (countOnHand(obj.target) < (progress.objectives[i]?.required ?? obj.count ?? 1)) {
+          if (countOnHand(obj.target) < (progress.objectives[i]?.required ?? obj.count)) {
             return false;
           }
         }
@@ -124,7 +124,7 @@ export class QuestManager {
       status: "active",
       objectives: def.objectives.map((obj) => ({
         current: 0,
-        required: obj.count ?? 1,
+        required: obj.count,
         done: false,
       })),
       acceptedAt: new Date().toISOString(),
@@ -170,10 +170,10 @@ export class QuestManager {
     if (!prog || !def) return null;
     prog.status = "completed";
     prog.completedAt = new Date().toISOString();
-    if (consume && def.consumeItems !== false) {
+    if (consume && def.consumeItems) {
       for (const obj of def.objectives) {
         if (obj.type === "collect" && obj.target) {
-          consume(obj.target, obj.count ?? 1);
+          consume(obj.target, obj.count);
         }
       }
     }
@@ -265,7 +265,7 @@ export class QuestManager {
       objectives: def.objectives.map((obj, i) => ({
         description: obj.description,
         current: prog.objectives[i]?.current ?? 0,
-        required: obj.count ?? 1,
+        required: obj.count,
         done: prog.objectives[i]?.done ?? false,
       })),
       ...(includeRewards && def.rewards ? { rewards: def.rewards } : {}),
@@ -284,7 +284,7 @@ export class QuestManager {
         objectives: def.objectives.map((obj, i) => ({
           description: obj.description,
           current: progress.objectives[i]?.current ?? 0,
-          required: obj.count ?? 1,
+          required: obj.count,
           done: progress.objectives[i]?.done ?? false,
         })),
       })),

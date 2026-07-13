@@ -216,18 +216,27 @@ export type NpcDefinition = Omit<
 export type ObjectiveType = "kill" | "collect" | "talk" | "visit" | "deliver";
 export type QuestStatus = "active" | "completed" | "failed";
 
-export type QuestObjective = Omit<_QuestObjective, "$type" | "type"> & {
+export type QuestObjective = Omit<_QuestObjective, "$type" | "type" | "count"> & {
   $type?: string;
   type: ObjectiveType;
+  /** Required in-memory; record readers apply the lexicon default (1) when absent */
+  count: number;
 };
 
 export type QuestRewards = Omit<_QuestRewards, "$type"> & { $type?: string };
 
-export type QuestDefinition = Omit<_QuestDefinition, "$type" | "objectives" | "ordered"> & {
+export type QuestDefinition = Omit<
+  _QuestDefinition,
+  "$type" | "objectives" | "ordered" | "consumeItems" | "repeatable"
+> & {
   $type?: string;
   objectives: QuestObjective[];
   /** Required in-memory; record readers apply the lexicon default (true) when absent */
   ordered: boolean;
+  /** Required in-memory; record readers apply the lexicon default (true) when absent */
+  consumeItems: boolean;
+  /** Required in-memory; record readers apply the lexicon default (false) when absent */
+  repeatable: boolean;
 };
 
 export type QuestObjectiveProgress = Omit<_QuestObjectiveProgress, "$type"> & { $type?: string };
