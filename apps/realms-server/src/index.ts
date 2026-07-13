@@ -364,6 +364,24 @@ setInterval(() => {
   }
 }, ATTESTATION_FLUSH_MS);
 
+// ── Periodic Federation Player Count Refresh ──
+// Keep the published registration record's playerCount fresh so discovery data
+// doesn't go stale after boot. Only writes when the count changed since the
+// last publish, to avoid hammering the PDS.
+const FEDERATION_REFRESH_MS = 5 * 60 * 1000;
+
+setInterval(() => {
+  if (!federation) return;
+  const count = sessions.getOnlineCount();
+  if (count === federation.publishedPlayerCount) return;
+  federation.updatePlayerCount(count).catch((err) => {
+    console.warn(
+      "   Failed to refresh federation player count:",
+      err instanceof Error ? err.message : err,
+    );
+  });
+}, FEDERATION_REFRESH_MS);
+
 // ── Idle Session Cleanup ──
 // Disconnect sessions idle for 30+ minutes
 setInterval(() => {

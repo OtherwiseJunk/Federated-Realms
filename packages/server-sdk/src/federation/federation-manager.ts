@@ -38,6 +38,10 @@ export interface KnownServer {
 export class FederationManager {
   private knownServers = new Map<string, KnownServer>();
   private lastPortalCount = 0;
+  private lastPlayerCount = 0;
+  /** Creation time of the registration record; stamped on first publish and
+   * preserved verbatim across every subsequent update. */
+  private createdAt?: string;
 
   constructor(
     private serverIdentity: ServerIdentity,
@@ -48,29 +52,46 @@ export class FederationManager {
   ) {}
 
   /**
+   * Build the federation registration record. Both the initial publish and
+   * periodic updates go through here so the 11-field shape stays in one place
+   * and cannot drift. createdAt is preserved across updates; updatedAt is
+   * always stamped to now.
+   */
+  private buildRegistrationRecord(overrides: {
+    portalCount: number;
+    playerCount: number;
+  }): Record<string, unknown> {
+    const now = new Date().toISOString();
+    this.createdAt ??= now;
+    return {
+      $type: NSID.FederationRegistration,
+      serverDid: this.serverIdentity.did,
+      name: this.serverName,
+      description: this.serverDescription,
+      endpoint: `${this.atprotoConfig.publicUrl}/ws`,
+      xrpcEndpoint: `${this.atprotoConfig.publicUrl}/xrpc`,
+      trustPolicy: this.federationConfig.trustPolicy,
+      signingKey: Buffer.from(this.serverIdentity.getPublicKeyBytes()).toString("base64url"),
+      portalCount: overrides.portalCount,
+      playerCount: overrides.playerCount,
+      createdAt: this.createdAt,
+      updatedAt: now,
+    };
+  }
+
+  /**
    * Publish this server's federation registration record to its PDS.
    * Called once at startup after AT Proto initialization.
    */
   async publishRegistration(portalCount: number, playerCount: number): Promise<void> {
     this.lastPortalCount = portalCount;
+    this.lastPlayerCount = playerCount;
     try {
       await this.serverIdentity.agent.com.atproto.repo.putRecord({
         repo: this.serverIdentity.did,
         collection: NSID.FederationRegistration,
         rkey: "self",
-        record: {
-          $type: NSID.FederationRegistration,
-          serverDid: this.serverIdentity.did,
-          name: this.serverName,
-          description: this.serverDescription,
-          endpoint: `${this.atprotoConfig.publicUrl}/ws`,
-          xrpcEndpoint: `${this.atprotoConfig.publicUrl}/xrpc`,
-          trustPolicy: this.federationConfig.trustPolicy,
-          signingKey: Buffer.from(this.serverIdentity.getPublicKeyBytes()).toString("base64url"),
-          portalCount,
-          playerCount,
-          createdAt: new Date().toISOString(),
-        },
+        record: this.buildRegistrationRecord({ portalCount, playerCount }),
       });
       console.log("   Published federation registration to PDS");
     } catch (err) {
@@ -79,6 +100,11 @@ export class FederationManager {
         err instanceof Error ? err.message : err,
       );
     }
+  }
+
+  /** The player count last written to the registration record. */
+  get publishedPlayerCount(): number {
+    return this.lastPlayerCount;
   }
 
   /**
@@ -91,21 +117,12 @@ export class FederationManager {
         repo: this.serverIdentity.did,
         collection: NSID.FederationRegistration,
         rkey: "self",
-        record: {
-          $type: NSID.FederationRegistration,
-          serverDid: this.serverIdentity.did,
-          name: this.serverName,
-          description: this.serverDescription,
-          endpoint: `${this.atprotoConfig.publicUrl}/ws`,
-          xrpcEndpoint: `${this.atprotoConfig.publicUrl}/xrpc`,
-          trustPolicy: this.federationConfig.trustPolicy,
-          signingKey: Buffer.from(this.serverIdentity.getPublicKeyBytes()).toString("base64url"),
+        record: this.buildRegistrationRecord({
           portalCount: this.lastPortalCount,
           playerCount: count,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
+        }),
       });
+      this.lastPlayerCount = count;
     } catch (err) {
       console.warn("   Failed to update player count:", err instanceof Error ? err.message : err);
     }
