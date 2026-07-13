@@ -8,6 +8,11 @@ import { NpcManager, type LootEntry } from "../entities/npc-manager.js";
 import { QuestManager } from "../systems/quest-manager.js";
 import { CraftingSystem } from "../systems/crafting-system.js";
 
+/** Prefix a content id with its area unless it already carries an explicit `area:` prefix. */
+function prefixId(areaId: string, id: string): string {
+  return id.includes(":") ? id : `${areaId}:${id}`;
+}
+
 interface AreaManifest {
   id: string;
   title: string;
@@ -215,7 +220,7 @@ export class AreaManager {
           coordinates: def.coordinates,
           exits: def.exits?.map((e) => ({
             direction: e.direction as any,
-            target: e.target.includes(":") ? e.target : `${areaId}:${e.target}`,
+            target: prefixId(areaId, e.target),
             portal: e.portal,
             requiredLevel: e.requiredLevel,
             description: e.description,
@@ -301,10 +306,14 @@ export class AreaManager {
           attributes: def.attributes,
           dialogue: def.dialogue as NpcDefinition["dialogue"],
           art: def.art,
-          shop: def.shop?.map((id) => (id.includes(":") ? id : `${areaId}:${id}`)),
+          shop: def.shop?.map((id) => prefixId(areaId, id)),
           tags: def.tags,
         };
-        this.npcManager.registerDefinition(defId, npcDef, def.loot, def.gold);
+        const loot = def.loot?.map((entry) => ({
+          ...entry,
+          itemId: prefixId(areaId, entry.itemId),
+        }));
+        this.npcManager.registerDefinition(defId, npcDef, loot, def.gold);
         npcCount++;
       }
 
@@ -334,19 +343,18 @@ export class AreaManager {
 
       for (const q of questsData.quests) {
         const questId = `${areaId}:${q.id}`;
-        const prefixId = (id: string) => (id.includes(":") ? id : `${areaId}:${id}`);
 
         this.questManager.registerDefinition(questId, {
           name: q.name,
           description: q.description,
           level: q.level,
-          giver: q.giver ? prefixId(q.giver) : undefined,
-          turnIn: q.turnIn ? prefixId(q.turnIn) : undefined,
-          prerequisites: q.prerequisites?.map(prefixId),
+          giver: q.giver ? prefixId(areaId, q.giver) : undefined,
+          turnIn: q.turnIn ? prefixId(areaId, q.turnIn) : undefined,
+          prerequisites: q.prerequisites?.map((id) => prefixId(areaId, id)),
           objectives: q.objectives.map((o) => ({
             type: o.type as any,
             description: o.description,
-            target: o.target ? prefixId(o.target) : undefined,
+            target: o.target ? prefixId(areaId, o.target) : undefined,
             count: o.count,
           })),
           ordered: q.ordered ?? true,
@@ -354,7 +362,7 @@ export class AreaManager {
             ? {
                 xp: q.rewards.xp,
                 gold: q.rewards.gold,
-                items: q.rewards.items?.map(prefixId),
+                items: q.rewards.items?.map((id) => prefixId(areaId, id)),
               }
             : undefined,
           repeatable: q.repeatable,
@@ -374,7 +382,6 @@ export class AreaManager {
 
       for (const r of recipesData.recipes) {
         const recipeId = `${areaId}:${r.id}`;
-        const prefixId = (id: string) => (id.includes(":") ? id : `${areaId}:${id}`);
 
         this.craftingSystem.registerRecipe(recipeId, {
           name: r.name,
@@ -382,11 +389,11 @@ export class AreaManager {
           station: r.station,
           levelRequired: r.levelRequired,
           ingredients: r.ingredients.map((ing) => ({
-            itemId: prefixId(ing.itemId),
+            itemId: prefixId(areaId, ing.itemId),
             count: ing.count,
           })),
           output: {
-            itemId: prefixId(r.output.itemId),
+            itemId: prefixId(areaId, r.output.itemId),
             count: r.output.count,
           },
           successChance: r.successChance,
@@ -405,7 +412,6 @@ export class AreaManager {
       let nodeCount = 0;
 
       for (const n of gatheringData.nodes) {
-        const prefixId = (id: string) => (id.includes(":") ? id : `${areaId}:${id}`);
         const nodeId = `${areaId}:${n.id}`;
         const roomId = `${areaId}:${n.room}`;
 
@@ -416,7 +422,7 @@ export class AreaManager {
           roomId,
           respawnSeconds: n.respawnSeconds,
           yields: n.yields.map((y) => ({
-            itemId: prefixId(y.itemId),
+            itemId: prefixId(areaId, y.itemId),
             chance: y.chance,
             min: y.min,
             max: y.max,
