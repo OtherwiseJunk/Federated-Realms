@@ -1,6 +1,21 @@
 import type { ServerIdentity } from "../atproto/server-identity.js";
 import type { FederationConfig, AtProtoConfig } from "../types/server-config.js";
 import { NSID } from "@realms/lexicons";
+import { fetchRecord, normalizeXrpcEndpoint, resolvePdsEndpoint } from "../atproto/xrpc.js";
+
+/**
+ * Shape shared by federation.registration and world.server record values —
+ * registration is a superset of the fields we read from world.server.
+ */
+interface ServerRecordValue {
+  name?: string;
+  description?: string;
+  endpoint?: string;
+  xrpcEndpoint?: string;
+  levelRange?: { min?: number; max?: number };
+  trustPolicy?: string;
+  signingKey?: string;
+}
 
 export interface KnownServer {
   did: string;
@@ -108,16 +123,13 @@ export class FederationManager {
     }
 
     try {
-      const pdsEndpoint = await this.resolvePds(did);
+      const pdsEndpoint = await resolvePdsEndpoint(did);
       if (!pdsEndpoint) return null;
 
-      // Try federation registration record first
-      let server = await this.fetchRegistrationRecord(did, pdsEndpoint);
-
-      // Fall back to world.server record
-      if (!server) {
-        server = await this.fetchServerRecord(did, pdsEndpoint);
-      }
+      // Try federation registration record first, fall back to world.server
+      const server =
+        (await this.fetchKnownServer(did, pdsEndpoint, NSID.FederationRegistration)) ??
+        (await this.fetchKnownServer(did, pdsEndpoint, NSID.WorldServer));
 
       if (server) {
         this.knownServers.set(did, server);
@@ -163,106 +175,29 @@ export class FederationManager {
     }
   }
 
-  private async resolvePds(did: string): Promise<string | null> {
-    try {
-      let didDoc: Record<string, unknown> | null = null;
-
-      if (did.startsWith("did:plc:")) {
-        const res = await fetch(`https://plc.directory/${did}`);
-        if (!res.ok) return null;
-        didDoc = (await res.json()) as Record<string, unknown>;
-      } else if (did.startsWith("did:web:")) {
-        const domain = did.replace("did:web:", "").replace(/:/g, "/");
-        const res = await fetch(`https://${domain}/.well-known/did.json`);
-        if (!res.ok) return null;
-        didDoc = (await res.json()) as Record<string, unknown>;
-      }
-
-      if (!didDoc) return null;
-
-      const service = (
-        didDoc.service as Array<{ id: string; type: string; serviceEndpoint: string }>
-      )?.find((s) => s.type === "AtprotoPersonalDataServer");
-      return service?.serviceEndpoint ?? null;
-    } catch (err) {
-      console.warn(
-        `   Failed to resolve PDS for ${did}:`,
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
-  }
-
-  private async fetchRegistrationRecord(
+  /**
+   * Fetch a server metadata record from the given PDS and map it onto a
+   * KnownServer. The record's xrpcEndpoint is normalized at this read
+   * boundary so the rest of the SDK always sees the /xrpc-prefixed form.
+   */
+  private async fetchKnownServer(
     did: string,
     pdsEndpoint: string,
+    collection: string,
   ): Promise<KnownServer | null> {
-    try {
-      const url = `${pdsEndpoint}/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(did)}&collection=${NSID.FederationRegistration}&rkey=self`;
-      const res = await fetch(url);
-      if (!res.ok) return null;
+    const value = await fetchRecord<ServerRecordValue>(pdsEndpoint, did, collection, "self");
+    if (!value) return null;
 
-      const data = (await res.json()) as {
-        value: {
-          name?: string;
-          description?: string;
-          endpoint?: string;
-          xrpcEndpoint?: string;
-          levelRange?: { min?: number; max?: number };
-          trustPolicy?: string;
-          signingKey?: string;
-        };
-      };
-
-      return {
-        did,
-        name: data.value.name ?? "Unknown",
-        description: data.value.description,
-        endpoint: data.value.endpoint ?? "",
-        xrpcEndpoint: data.value.xrpcEndpoint,
-        levelRange: data.value.levelRange,
-        trustPolicy: data.value.trustPolicy,
-        signingKey: data.value.signingKey,
-        lastSeen: Date.now(),
-      };
-    } catch (err) {
-      console.warn(
-        `   Failed to fetch registration for ${did}:`,
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
-  }
-
-  private async fetchServerRecord(did: string, pdsEndpoint: string): Promise<KnownServer | null> {
-    try {
-      const url = `${pdsEndpoint}/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(did)}&collection=${NSID.WorldServer}&rkey=self`;
-      const res = await fetch(url);
-      if (!res.ok) return null;
-
-      const data = (await res.json()) as {
-        value: {
-          name?: string;
-          description?: string;
-          endpoint?: string;
-          xrpcEndpoint?: string;
-        };
-      };
-
-      return {
-        did,
-        name: data.value.name ?? "Unknown",
-        description: data.value.description,
-        endpoint: data.value.endpoint ?? "",
-        xrpcEndpoint: data.value.xrpcEndpoint,
-        lastSeen: Date.now(),
-      };
-    } catch (err) {
-      console.warn(
-        `   Failed to fetch server record for ${did}:`,
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
+    return {
+      did,
+      name: value.name ?? "Unknown",
+      description: value.description,
+      endpoint: value.endpoint ?? "",
+      xrpcEndpoint: value.xrpcEndpoint ? normalizeXrpcEndpoint(value.xrpcEndpoint) : undefined,
+      levelRange: value.levelRange,
+      trustPolicy: value.trustPolicy,
+      signingKey: value.signingKey,
+      lastSeen: Date.now(),
+    };
   }
 }

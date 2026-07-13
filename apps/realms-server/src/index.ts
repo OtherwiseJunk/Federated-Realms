@@ -78,7 +78,7 @@ setInterval(() => {
 
 let federation: FederationManager | null = null;
 let chatRelay: ChatRelayService | null = null;
-const portalHandler = new PortalHandler(serverIdentity, pdsClient, config.federation);
+const portalHandler = new PortalHandler(serverIdentity);
 const transferHandler = new TransferHandler(
   serverIdentity,
   sessions,
@@ -129,6 +129,7 @@ if (!DEV_MODE) {
       await federation.publishRegistration(portalCount, 0);
       await federation.seedFromConfig();
       transferHandler.setFederationManager(federation);
+      portalHandler.setFederationManager(federation);
 
       // Cross-server chat relay
       chatRelay = new ChatRelayService(serverIdentity, federation, sessions);

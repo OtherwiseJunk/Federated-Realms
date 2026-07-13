@@ -1,15 +1,16 @@
 import type { RoomExit } from "@realms/lexicons";
+import { NSID } from "@realms/lexicons";
 import type { CharacterSession } from "../entities/character-session.js";
 import type { ServerIdentity } from "../atproto/server-identity.js";
-import type { PdsClient } from "../atproto/pds-client.js";
-import type { FederationConfig } from "../types/server-config.js";
+import type { FederationManager } from "./federation-manager.js";
+import { xrpcUrl } from "../atproto/xrpc.js";
 import { encodeMessage } from "@realms/protocol";
 
 /**
  * Handles portal traversal from the source server's perspective.
  * When a player enters a portal exit, this handler:
  * 1. Validates requirements (level, etc.)
- * 2. Resolves the target server's endpoint
+ * 2. Resolves the target server's game endpoint via the FederationManager
  * 3. Creates a character snapshot + transfer JWT
  * 4. Calls the target server's transfer XRPC
  * 5. Sends a portal_offer to the client
@@ -17,9 +18,12 @@ import { encodeMessage } from "@realms/protocol";
 export class PortalHandler {
   constructor(
     private serverIdentity: ServerIdentity,
-    private pdsClient: PdsClient,
-    private federationConfig: FederationConfig,
+    private federation?: FederationManager,
   ) {}
+
+  setFederationManager(federation: FederationManager): void {
+    this.federation = federation;
+  }
 
   /**
    * Parse a portal exit target string into server DID and room ID.
@@ -74,9 +78,12 @@ export class PortalHandler {
       return false;
     }
 
-    // Resolve the target server's XRPC endpoint
-    const targetEndpoint = await this.resolveServerEndpoint(serverDid);
-    if (!targetEndpoint) {
+    // Resolve the target server's game endpoint. The FederationManager reads
+    // it from the target's registration/world.server record (cached). A server
+    // without a game xrpcEndpoint is unreachable — its PDS can't accept
+    // transfers, so there is no fallback.
+    const target = this.federation ? await this.federation.resolveServer(serverDid) : null;
+    if (!target?.xrpcEndpoint) {
       sendNarrative("The portal flickers and dies. The destination realm is unreachable.", "error");
       return false;
     }
@@ -110,14 +117,12 @@ export class PortalHandler {
 
     // Call target server's transfer endpoint
     try {
-      const response = await fetch(
-        `${targetEndpoint}/xrpc/com.cacheblasters.realms.federation.transfer`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, character: snapshot, attestations }),
-        },
-      );
+      const response = await fetch(xrpcUrl(target.xrpcEndpoint, NSID.FederationTransfer), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, character: snapshot, attestations }),
+        signal: AbortSignal.timeout(10_000),
+      });
 
       if (!response.ok) {
         sendNarrative(
@@ -146,9 +151,9 @@ export class PortalHandler {
         encodeMessage({
           type: "portal_offer",
           targetServer: {
-            name: result.serverName ?? "Unknown Realm",
+            name: result.serverName ?? target.name,
             did: serverDid,
-            endpoint: result.websocketUrl ?? targetEndpoint,
+            endpoint: result.websocketUrl ?? target.endpoint,
           },
           sessionId: result.sessionId ?? "",
           websocketUrl: result.websocketUrl ?? "",
@@ -159,53 +164,6 @@ export class PortalHandler {
     } catch {
       sendNarrative("The portal flickers and dies. The destination realm is unreachable.", "error");
       return false;
-    }
-  }
-
-  /**
-   * Resolve a server DID to its XRPC endpoint.
-   * Uses DID resolution to find the PDS, then reads the server record.
-   */
-  private async resolveServerEndpoint(did: string): Promise<string | null> {
-    try {
-      // Resolve DID document via plc.directory
-      const didDoc = await this.resolveDid(did);
-      if (!didDoc) return null;
-
-      // Find the PDS service endpoint
-      const service = (
-        didDoc.service as Array<{ id: string; type: string; serviceEndpoint: string }>
-      )?.find((s) => s.type === "AtprotoPersonalDataServer");
-      if (!service) return null;
-
-      // Read the server's world.server record to get its game endpoint
-      const recordUrl = `${service.serviceEndpoint}/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(did)}&collection=com.cacheblasters.realms.world.server&rkey=self`;
-      const res = await fetch(recordUrl);
-      if (!res.ok) return service.serviceEndpoint;
-
-      const data = (await res.json()) as { value: { xrpcEndpoint?: string } };
-      return data.value.xrpcEndpoint ?? service.serviceEndpoint;
-    } catch {
-      return null;
-    }
-  }
-
-  private async resolveDid(did: string): Promise<Record<string, unknown> | null> {
-    try {
-      if (did.startsWith("did:plc:")) {
-        const res = await fetch(`https://plc.directory/${did}`);
-        if (!res.ok) return null;
-        return (await res.json()) as Record<string, unknown>;
-      }
-      if (did.startsWith("did:web:")) {
-        const domain = did.replace("did:web:", "").replace(/:/g, "/");
-        const res = await fetch(`https://${domain}/.well-known/did.json`);
-        if (!res.ok) return null;
-        return (await res.json()) as Record<string, unknown>;
-      }
-      return null;
-    } catch {
-      return null;
     }
   }
 

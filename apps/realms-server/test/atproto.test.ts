@@ -638,11 +638,7 @@ describe("attestation tracker", () => {
 // ─── Portal Target Parsing ──────────────────────────────────
 
 describe("portal target parsing", () => {
-  const handler = new PortalHandler({ did: "did:plc:local" } as any, {} as any, {
-    trustPolicy: "trust-all",
-    trustedServers: [],
-    maxAcceptedLevel: 50,
-  });
+  const handler = new PortalHandler({ did: "did:plc:local" } as any);
 
   test("parses did:plc portal target", () => {
     const result = handler.parsePortalTarget("did:plc:abc123xyz:arrival-hall");
