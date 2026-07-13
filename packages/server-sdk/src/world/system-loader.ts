@@ -1,5 +1,5 @@
 import { parse as parseYaml } from "yaml";
-import type { GameSystem } from "@realms/common";
+import { withDefaultFormulas, type GameSystem } from "@realms/common";
 import type {
   AttributeDef,
   ClassDef,
@@ -33,7 +33,10 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     attributes: raw.attributes ?? {},
     classes: raw.classes ?? {},
     races: raw.races ?? {},
-    formulas: raw.formulas ?? {},
+    // Guarantee a formula exists for every core derived stat. Systems that omit
+    // maxHp/maxMp/maxAp inherit the reference defaults so derived-stat consumers
+    // never fall back to already-mutated current values (issue #81).
+    formulas: withDefaultFormulas(raw.formulas ?? {}),
     equipSlots: raw.equipSlots ?? {},
     itemTypes: raw.itemTypes ?? {},
     spells: raw.spells ?? {},
