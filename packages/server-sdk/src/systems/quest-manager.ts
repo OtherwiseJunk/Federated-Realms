@@ -133,7 +133,7 @@ export class QuestManager {
     // Credit collect objectives for items already in inventory
     if (countOnHand) {
       for (let i = 0; i < def.objectives.length; i++) {
-        if (i > 0 && !progress.objectives[i - 1].done) break;
+        if (def.ordered && i > 0 && !progress.objectives[i - 1].done) break;
         const obj = def.objectives[i];
         if (obj.type !== "collect" || !obj.target) continue;
         const prog = progress.objectives[i];
@@ -225,8 +225,9 @@ export class QuestManager {
         if (obj.type !== type) continue;
         if (obj.target && obj.target !== targetId) continue;
 
-        // Only advance if previous objectives are done (or this is first)
-        const prevDone = i === 0 || progress.objectives.slice(0, i).every((p) => p.done);
+        // Ordered quests only advance an objective once all previous ones are done
+        const prevDone =
+          !def.ordered || i === 0 || progress.objectives.slice(0, i).every((p) => p.done);
         if (!prevDone) continue;
 
         // Collect objectives mirror what's on hand; other types accumulate events
@@ -240,7 +241,8 @@ export class QuestManager {
           prog.done = true;
         }
         changed = true;
-        break; // Only advance one objective at a time
+        // Ordered quests advance one objective per event; unordered credit every match
+        if (def.ordered) break;
       }
 
       if (changed) updated.push(questId);

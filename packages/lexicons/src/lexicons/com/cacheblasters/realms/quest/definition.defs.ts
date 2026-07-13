@@ -35,9 +35,14 @@ type Main = {
   prerequisites?: string[];
 
   /**
-   * Ordered list of objectives to complete
+   * List of objectives to complete
    */
   objectives: Objective[];
+
+  /**
+   * Whether objectives must be completed in listed order (default true)
+   */
+  ordered?: boolean;
   rewards?: Rewards;
 
   /**
@@ -66,6 +71,7 @@ const main = l.record<"any", Main>(
     turnIn: l.optional(l.string()),
     prerequisites: l.optional(l.array(l.string())),
     objectives: l.array(l.ref<Objective>((() => objective) as any)),
+    ordered: l.optional(l.boolean()),
     rewards: l.optional(l.ref<Rewards>((() => rewards) as any)),
     repeatable: l.optional(l.boolean()),
     consumeItems: l.optional(l.boolean()),

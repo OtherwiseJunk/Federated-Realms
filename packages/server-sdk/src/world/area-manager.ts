@@ -109,6 +109,7 @@ interface QuestDef {
   turnIn?: string;
   prerequisites?: string[];
   objectives: QuestObjectiveDef[];
+  ordered?: boolean;
   rewards?: QuestRewardsDef;
   repeatable?: boolean;
   tags?: string[];
@@ -348,6 +349,7 @@ export class AreaManager {
             target: o.target ? prefixId(o.target) : undefined,
             count: o.count,
           })),
+          ordered: q.ordered ?? true,
           rewards: q.rewards
             ? {
                 xp: q.rewards.xp,

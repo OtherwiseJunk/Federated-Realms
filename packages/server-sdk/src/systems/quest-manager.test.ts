@@ -10,6 +10,7 @@ function makeQuest(overrides: Partial<QuestDefinition> = {}): QuestDefinition {
     description: "A test quest.",
     giver: "npc-elder",
     objectives: [{ type: "kill", target: "goblin", description: "Kill 3 goblins", count: 3 }],
+    ordered: true,
     ...overrides,
   } as QuestDefinition;
 }
@@ -276,6 +277,87 @@ describe("QuestManager", () => {
 
       qm.acceptQuest(PLAYER, "q1", () => 5);
       expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
+    });
+
+    test("unordered quest advances objectives in any order", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          ordered: false,
+          objectives: [
+            { type: "collect", target: "red-cap", description: "5 red caps", count: 5 },
+            { type: "collect", target: "blue-cap", description: "5 blue caps", count: 5 },
+            { type: "collect", target: "green-cap", description: "5 green caps", count: 5 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      // Second objective advances while first is untouched
+      expect(qm.recordCollect(PLAYER, "blue-cap", 5)).toEqual(["q1"]);
+      const progress = qm.getProgress(PLAYER, "q1")!;
+      expect(progress.objectives[0].current).toBe(0);
+      expect(progress.objectives[1].done).toBe(true);
+    });
+
+    test("unordered quest credits one event to every matching objective", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          ordered: false,
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill 2 goblins", count: 2 },
+            { type: "kill", description: "Kill 3 of anything", count: 3 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "goblin");
+      const progress = qm.getProgress(PLAYER, "q1")!;
+      expect(progress.objectives[0].current).toBe(1);
+      expect(progress.objectives[1].current).toBe(1);
+    });
+
+    test("ordered quest still credits one objective per event", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill 1 goblin", count: 1 },
+            { type: "kill", description: "Kill 3 of anything", count: 3 },
+          ],
+        } as any),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "goblin");
+      const progress = qm.getProgress(PLAYER, "q1")!;
+      expect(progress.objectives[0].done).toBe(true);
+      expect(progress.objectives[1].current).toBe(0);
+    });
+
+    test("acceptQuest syncs all collect objectives when unordered", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          ordered: false,
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
+            { type: "collect", target: "red-cap", description: "5 red caps", count: 5 },
+            { type: "collect", target: "blue-cap", description: "5 blue caps", count: 5 },
+          ],
+        } as any),
+      );
+
+      qm.acceptQuest(PLAYER, "q1", (itemDefId) => (itemDefId === "blue-cap" ? 5 : 0));
+      const progress = qm.getProgress(PLAYER, "q1")!;
+      expect(progress.objectives[1].current).toBe(0);
+      expect(progress.objectives[2].done).toBe(true);
     });
 
     test("recordVisit tracks room visits", () => {
