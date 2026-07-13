@@ -223,9 +223,11 @@ export type QuestObjective = Omit<_QuestObjective, "$type" | "type"> & {
 
 export type QuestRewards = Omit<_QuestRewards, "$type"> & { $type?: string };
 
-export type QuestDefinition = Omit<_QuestDefinition, "$type" | "objectives"> & {
+export type QuestDefinition = Omit<_QuestDefinition, "$type" | "objectives" | "ordered"> & {
   $type?: string;
   objectives: QuestObjective[];
+  /** Required in-memory; record readers apply the lexicon default (true) when absent */
+  ordered: boolean;
 };
 
 export type QuestObjectiveProgress = Omit<_QuestObjectiveProgress, "$type"> & { $type?: string };

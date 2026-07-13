@@ -203,6 +203,66 @@ function broadcast(roomId: string, msg: ServerMessage, excludeSessionId?: string
 
 const combat = new CombatSystem({ world, sessions, broadcast });
 
+// Single teardown path: fires for WS close, idle reap, and duplicate login
+sessions.onRemove = (session) => {
+  console.log(`Player disconnected: ${session.name}`);
+
+  // End combat if in combat — reset ALL combat NPCs, not just the target
+  if (session.inCombat) {
+    combat.disengageAll(session);
+  }
+
+  // Remove from room
+  const room = world.getRoom(session.currentRoom);
+  if (room) {
+    const entity = room.removePlayer(session.sessionId);
+    if (entity) {
+      broadcast(room.id, {
+        type: "entity_leave",
+        entity,
+        room: room.id,
+      });
+    }
+  }
+
+  // Post to Bluesky
+  bluesky.post({
+    type: "system",
+    roomId: session.currentRoom,
+    roomTitle: room?.title ?? session.currentRoom,
+    playerName: session.name,
+    playerDid: session.characterDid,
+    text: `${session.name} has left the realm.`,
+  });
+
+  // Finalize attestations and store in character profile extensions
+  session.attestations
+    .finalize()
+    .then((attestations) => {
+      if (attestations.length > 0) {
+        const s = session.state;
+        const serverExt =
+          (s.extensions?.[serverIdentity.did] as { attestations?: unknown[] } | undefined) ?? {};
+        const existing = serverExt.attestations ?? [];
+        s.extensions = {
+          ...s.extensions,
+          [serverIdentity.did]: {
+            ...serverExt,
+            attestations: [...existing, ...attestations],
+          },
+        };
+      }
+    })
+    .catch((err) => {
+      console.warn(
+        `Failed to finalize attestations for ${session.name}:`,
+        err instanceof Error ? err.message : err,
+      );
+    });
+
+  transferHandler.pendingAdaptations.delete(session.sessionId);
+};
+
 function makeContext(sessionId: string): CommandContext | null {
   const session = sessions.getSession(sessionId);
   if (!session) return null;
@@ -307,16 +367,13 @@ setInterval(() => {
 // Disconnect sessions idle for 30+ minutes
 setInterval(() => {
   for (const session of sessions.getIdleSessions()) {
-    if (session.ws) {
-      session.send(
-        encodeMessage({
-          type: "narrative",
-          text: "Disconnected due to inactivity.",
-          style: "error",
-        }),
-      );
-      session.ws.close(1000, "Idle timeout");
-    }
+    session.send(
+      encodeMessage({
+        type: "narrative",
+        text: "Disconnected due to inactivity.",
+        style: "error",
+      }),
+    );
     sessions.removeSession(session.sessionId);
   }
 }, 60_000); // Check every minute
@@ -1019,67 +1076,7 @@ const server = Bun.serve<SessionData>({
     },
 
     close(ws: import("bun").ServerWebSocket<SessionData>) {
-      const session = sessions.getSession(ws.data.sessionId);
-      if (!session) return;
-
-      console.log(`Player disconnected: ${session.name}`);
-
-      // End combat if in combat — reset ALL combat NPCs, not just the target
-      if (session.inCombat) {
-        combat.disengageAll(session);
-      }
-
-      // Remove from room
-      const room = world.getRoom(session.currentRoom);
-      if (room) {
-        const entity = room.removePlayer(session.sessionId);
-        if (entity) {
-          broadcast(room.id, {
-            type: "entity_leave",
-            entity,
-            room: room.id,
-          });
-        }
-      }
-
-      // Post to Bluesky
-      bluesky.post({
-        type: "system",
-        roomId: session.currentRoom,
-        roomTitle: room?.title ?? session.currentRoom,
-        playerName: session.name,
-        playerDid: session.characterDid,
-        text: `${session.name} has left the realm.`,
-      });
-
-      // Finalize attestations and store in character profile extensions
-      session.attestations
-        .finalize()
-        .then((attestations) => {
-          if (attestations.length > 0) {
-            const s = session.state;
-            const serverExt =
-              (s.extensions?.[serverIdentity.did] as { attestations?: unknown[] } | undefined) ??
-              {};
-            const existing = serverExt.attestations ?? [];
-            s.extensions = {
-              ...s.extensions,
-              [serverIdentity.did]: {
-                ...serverExt,
-                attestations: [...existing, ...attestations],
-              },
-            };
-          }
-        })
-        .catch((err) => {
-          console.warn(
-            `Failed to finalize attestations for ${session.name}:`,
-            err instanceof Error ? err.message : err,
-          );
-        });
-
-      transferHandler.pendingAdaptations.delete(session.sessionId);
-      sessions.removeSession(session.sessionId);
+      sessions.removeSession(ws.data.sessionId);
     },
   },
 });

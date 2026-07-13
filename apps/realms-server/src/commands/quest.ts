@@ -2,7 +2,7 @@ import type { ParsedCommand } from "@realms/common";
 import { encodeMessage } from "@realms/protocol";
 import { xpToNextLevel, createItemInstance } from "@realms/common";
 import type { CommandContext } from "./index.js";
-import { sendNarrative } from "./index.js";
+import { recordQuestCollect, sendNarrative } from "./index.js";
 import type { QuestManager } from "@realms/server-sdk";
 
 export function handleQuest(cmd: ParsedCommand, ctx: CommandContext): void {
@@ -33,6 +33,7 @@ export function handleQuestList(cmd: ParsedCommand, ctx: CommandContext): void {
       const completable = world.questManager.getCompletableQuests(
         session.characterDid,
         npc.definitionId,
+        (itemDefId) => session.countItem(itemDefId),
       );
       if (available.length > 0 || completable.length > 0) {
         const npcName = npc.name;
@@ -89,7 +90,9 @@ export function handleAcceptQuest(cmd: ParsedCommand, ctx: CommandContext): void
     );
     const match = available.find(({ def }) => def.name.toLowerCase().includes(questName));
     if (match) {
-      world.questManager.acceptQuest(session.characterDid, match.questId);
+      world.questManager.acceptQuest(session.characterDid, match.questId, (itemDefId) =>
+        session.countItem(itemDefId),
+      );
       const firstObj = match.def.objectives[0];
       const lines = [
         `You accept the quest: ${match.def.name}`,
@@ -139,12 +142,20 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
     const completable = world.questManager.getCompletableQuests(
       session.characterDid,
       npc.definitionId,
+      (itemDefId) => session.countItem(itemDefId),
     );
     if (completable.length === 0) continue;
 
-    // Complete the first completable quest
+    // Complete the first completable quest, consuming turned-in items
     const { questId, def } = completable[0];
-    const completed = world.questManager.completeQuest(session.characterDid, questId);
+    let itemsConsumed = false;
+    const completed = world.questManager.completeQuest(
+      session.characterDid,
+      questId,
+      (itemDefId, count) => {
+        itemsConsumed = session.removeItemByDefId(itemDefId, count) || itemsConsumed;
+      },
+    );
     if (!completed) continue;
 
     // Attest quest completion
@@ -170,6 +181,7 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
           const item = createItemInstance(itemId, itemDef, 1);
           session.addItem(item);
           session.attestations.recordItemGrant(itemId);
+          recordQuestCollect(ctx, itemId);
           rewardParts.push(item.name);
         }
       }
@@ -202,8 +214,8 @@ export function handleTurnIn(cmd: ParsedCommand, ctx: CommandContext): void {
       }),
     );
 
-    // Send inventory update if items were granted
-    if (rewards?.items?.length) {
+    // Send inventory update if items were granted or consumed
+    if (rewards?.items?.length || itemsConsumed) {
       session.send(encodeMessage({ type: "inventory_update", inventory: session.inventory }));
     }
 

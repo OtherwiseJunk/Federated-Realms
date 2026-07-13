@@ -228,6 +228,19 @@ function handleStats(ctx: CommandContext): void {
   sendNarrative(ctx.session, lines.join("\n"), "system");
 }
 
+/** Sync collect-quest objectives for an acquired item and notify the player */
+export function recordQuestCollect(ctx: CommandContext, itemDefId: string): void {
+  const updates = ctx.world.questManager.recordCollect(
+    ctx.session.characterDid,
+    itemDefId,
+    ctx.session.countItem(itemDefId),
+  );
+  for (const questId of updates) {
+    const payload = ctx.world.questManager.buildUpdatePayload(ctx.session.characterDid, questId);
+    if (payload) ctx.session.send(encodeMessage(payload));
+  }
+}
+
 export function sendNarrative(
   session: CharacterSession,
   text: string,

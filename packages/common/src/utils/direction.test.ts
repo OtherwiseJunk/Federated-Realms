@@ -38,6 +38,13 @@ describe("resolveDirection", () => {
     expect(resolveDirection("")).toBeUndefined();
     expect(resolveDirection("x")).toBeUndefined();
   });
+
+  test("does not resolve Object.prototype members as directions", () => {
+    expect(resolveDirection("hasOwnProperty")).toBeUndefined();
+    expect(resolveDirection("toString")).toBeUndefined();
+    expect(resolveDirection("constructor")).toBeUndefined();
+    expect(resolveDirection("__proto__")).toBeUndefined();
+  });
 });
 
 describe("isDirection", () => {

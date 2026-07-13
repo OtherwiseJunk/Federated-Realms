@@ -16,8 +16,10 @@ import {
   checkLevelUp,
   attemptFlee,
   formatAttackResult,
+  resolveSpellSelf,
 } from "./combat-engine.ts";
 import type { EquipmentConfig } from "./combat-engine.ts";
+import type { SpellDef } from "@realms/lexicons";
 
 // ── Test config matching the default fantasy system.yml ──
 
@@ -63,6 +65,62 @@ describe("dice", () => {
       const roll = rollDice(2, 6); // 2d6: 2-12
       expect(roll).toBeGreaterThanOrEqual(2);
       expect(roll).toBeLessThanOrEqual(12);
+    }
+  });
+
+  test("rollDice caps oversized count and sides", () => {
+    expect(rollDice(999999999, 9)).toBeLessThanOrEqual(100 * 9);
+    expect(rollDice(100, 999999)).toBeLessThanOrEqual(100 * 1000);
+  });
+});
+
+describe("spell dice notation", () => {
+  // wis 10 → cast mod 0, so amount = power (10) + dice roll
+  const attrs = { wis: 10 };
+
+  function makeSpell(dice: string): SpellDef {
+    return {
+      name: "Test Spell",
+      description: "A spell for testing",
+      mpCost: 1,
+      attribute: "wis",
+      effect: "heal",
+      power: 10,
+      target: "self",
+      dice,
+    };
+  }
+
+  test("oversized dice count is ignored like invalid notation", () => {
+    expect(resolveSpellSelf(makeSpell("999999999d9"), attrs).amount).toBe(10);
+  });
+
+  test("oversized dice sides are ignored like invalid notation", () => {
+    expect(resolveSpellSelf(makeSpell("2d999999"), attrs).amount).toBe(10);
+  });
+
+  test("zero-count and zero-sided dice are ignored", () => {
+    expect(resolveSpellSelf(makeSpell("0d6"), attrs).amount).toBe(10);
+    expect(resolveSpellSelf(makeSpell("3d0"), attrs).amount).toBe(10);
+  });
+
+  test("dice at the caps still roll", () => {
+    const result = resolveSpellSelf(makeSpell("100d1000"), attrs);
+    expect(result.amount).toBeGreaterThanOrEqual(10 + 100);
+    expect(result.amount).toBeLessThanOrEqual(10 + 100 * 1000);
+  });
+
+  test("normal dice notation still rolls", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = resolveSpellSelf(makeSpell("2d6"), attrs);
+      expect(result.amount).toBeGreaterThanOrEqual(12);
+      expect(result.amount).toBeLessThanOrEqual(22);
+    }
+  });
+
+  test("invalid notation is ignored", () => {
+    for (const dice of ["abc", "2d6+3", "d6", "2d", "-1d6", "2 d6"]) {
+      expect(resolveSpellSelf(makeSpell(dice), attrs).amount).toBe(10);
     }
   });
 });

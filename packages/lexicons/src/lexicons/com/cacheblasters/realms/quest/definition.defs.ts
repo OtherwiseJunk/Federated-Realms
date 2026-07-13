@@ -35,15 +35,25 @@ type Main = {
   prerequisites?: string[];
 
   /**
-   * Ordered list of objectives to complete
+   * List of objectives to complete
    */
   objectives: Objective[];
+
+  /**
+   * Whether objectives must be completed in listed order (default true)
+   */
+  ordered?: boolean;
   rewards?: Rewards;
 
   /**
    * Whether this quest can be accepted again after completion
    */
   repeatable?: boolean;
+
+  /**
+   * Whether collect-objective items are removed from the player's inventory on turn-in (default true)
+   */
+  consumeItems?: boolean;
   tags?: string[];
 };
 
@@ -61,8 +71,10 @@ const main = l.record<"any", Main>(
     turnIn: l.optional(l.string()),
     prerequisites: l.optional(l.array(l.string())),
     objectives: l.array(l.ref<Objective>((() => objective) as any)),
+    ordered: l.optional(l.boolean()),
     rewards: l.optional(l.ref<Rewards>((() => rewards) as any)),
     repeatable: l.optional(l.boolean()),
+    consumeItems: l.optional(l.boolean()),
     tags: l.optional(l.array(l.string())),
   }),
 );

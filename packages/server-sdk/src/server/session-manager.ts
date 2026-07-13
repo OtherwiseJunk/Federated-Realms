@@ -11,6 +11,14 @@ export class SessionManager {
   private serverIdentity?: ServerIdentity;
   private lastActivity = new Map<string, number>();
 
+  /**
+   * Invoked exactly once per removed session, before its socket closes.
+   * Every removal path funnels through removeSession (idle reap, duplicate
+   * login, WS close), so game teardown (room exit, combat, persistence)
+   * belongs here rather than in a WS close handler.
+   */
+  onRemove?: (session: CharacterSession) => void;
+
   /** Set once during startup so all sessions get attestation tracking */
   setServerIdentity(identity: ServerIdentity): void {
     if (this.serverIdentity) {
@@ -46,6 +54,7 @@ export class SessionManager {
     );
     this.sessions.set(sessionId, session);
     this.didToSession.set(characterDid, sessionId);
+    this.touch(sessionId);
     return session;
   }
 
@@ -56,6 +65,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.ws = ws;
+      this.touch(sessionId);
     }
     return session;
   }
@@ -82,7 +92,11 @@ export class SessionManager {
     if (session) {
       this.sessions.delete(sessionId);
       this.didToSession.delete(session.characterDid);
+      this.lastActivity.delete(sessionId);
+      this.onRemove?.(session);
+      const ws = session.ws;
       session.ws = null;
+      ws?.close();
     }
     return session;
   }

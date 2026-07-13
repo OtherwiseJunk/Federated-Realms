@@ -25,6 +25,7 @@ interface NodeState {
 
 export interface CraftResult {
   success: boolean;
+  outputItemId?: string;
   outputName?: string;
   outputCount?: number;
   missingIngredients?: { name: string; have: number; need: number }[];
@@ -35,7 +36,7 @@ export interface CraftResult {
 export interface GatherResult {
   success: boolean;
   node?: GatheringNode;
-  items?: { name: string; count: number }[];
+  items?: { itemId: string; name: string; count: number }[];
   depleted?: boolean;
   reason?: string;
 }
@@ -184,6 +185,7 @@ export class CraftingSystem {
 
     return {
       success: true,
+      outputItemId: matchDef.output.itemId,
       outputName: outputDef.name,
       outputCount: matchDef.output.count,
     };
@@ -230,7 +232,7 @@ export class CraftingSystem {
     this.nodeState.set(node.id, { depletedAt: Date.now() });
 
     // Roll yields
-    const gained: { name: string; count: number }[] = [];
+    const gained: { itemId: string; name: string; count: number }[] = [];
     for (const yld of node.yields) {
       const roll = Math.random() * 100;
       if (roll < yld.chance) {
@@ -240,7 +242,7 @@ export class CraftingSystem {
           const item = createItemInstance(yld.itemId, def, count);
           session.addItem(item);
           session.attestations.recordItemGrant(yld.itemId);
-          gained.push({ name: def.name, count });
+          gained.push({ itemId: yld.itemId, name: def.name, count });
         }
       }
     }

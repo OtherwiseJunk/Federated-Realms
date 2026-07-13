@@ -63,13 +63,18 @@ export class WsClient {
   }
 
   private openSocket(url: string): void {
-    this.ws = new WebSocket(url);
+    // Events from a replaced socket (disconnect/switchServer) must not
+    // touch shared state, so every handler checks it still owns this.ws.
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this._connected = true;
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       const data = typeof event.data === "string" ? event.data : String(event.data);
       const msg = decodeServerMessage(data);
       if (msg) {
@@ -79,7 +84,8 @@ export class WsClient {
       }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return;
       this._connected = false;
       for (const handler of this.handlers) {
         handler({
@@ -90,7 +96,8 @@ export class WsClient {
       }
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (this.ws !== socket) return;
       this._connected = false;
     };
   }

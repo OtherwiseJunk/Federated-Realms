@@ -25,14 +25,21 @@ export const AP_COST = {
 
 // ── Dice ──
 
+// Dice notation arrives from untrusted federated records; unbounded values
+// would let a hostile record spin the roll loop and block the event loop.
+const MAX_DICE_COUNT = 100;
+const MAX_DICE_SIDES = 1000;
+
 export function rollD20(): number {
   return Math.floor(Math.random() * 20) + 1;
 }
 
 export function rollDice(count: number, sides: number): number {
+  const boundedCount = Math.min(count, MAX_DICE_COUNT);
+  const boundedSides = Math.min(sides, MAX_DICE_SIDES);
   let total = 0;
-  for (let i = 0; i < count; i++) {
-    total += Math.floor(Math.random() * sides) + 1;
+  for (let i = 0; i < boundedCount; i++) {
+    total += Math.floor(Math.random() * boundedSides) + 1;
   }
   return total;
 }
@@ -305,12 +312,15 @@ export interface SpellResult {
 
 /**
  * Parse dice notation like "2d6" into {count, sides}.
- * Returns null for invalid notation.
+ * Returns null for invalid or out-of-range notation.
  */
 function parseDice(notation: string): { count: number; sides: number } | null {
   const match = notation.match(/^(\d+)d(\d+)$/);
   if (!match) return null;
-  return { count: parseInt(match[1]), sides: parseInt(match[2]) };
+  const count = parseInt(match[1]);
+  const sides = parseInt(match[2]);
+  if (count < 1 || count > MAX_DICE_COUNT || sides < 1 || sides > MAX_DICE_SIDES) return null;
+  return { count, sides };
 }
 
 /**

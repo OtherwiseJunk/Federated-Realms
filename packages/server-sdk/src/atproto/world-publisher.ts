@@ -88,6 +88,7 @@ export class WorldPublisher {
           target: o.target,
           count: o.count,
         })),
+        ordered: quest.ordered ? undefined : false,
         rewards: quest.rewards,
         repeatable: quest.repeatable,
         tags: quest.tags?.length ? quest.tags : undefined,

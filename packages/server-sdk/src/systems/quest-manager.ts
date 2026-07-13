@@ -88,16 +88,33 @@ export class QuestManager {
   getCompletableQuests(
     characterDid: string,
     npcDefId: string,
+    countOnHand?: (itemDefId: string) => number,
   ): Array<{ questId: string; def: QuestDefinition; progress: ActiveQuestState }> {
     const active = this.getActiveQuests(characterDid);
     return active.filter(({ def, progress }) => {
       const turnInNpc = def.turnIn ?? def.giver;
       if (turnInNpc !== npcDefId) return false;
-      return progress.objectives.every((o) => o.done);
+      if (!progress.objectives.every((o) => o.done)) return false;
+      // A collect objective marked done can go stale if the player later
+      // dropped or sold the items — re-verify possession at turn-in
+      if (countOnHand) {
+        for (let i = 0; i < def.objectives.length; i++) {
+          const obj = def.objectives[i];
+          if (obj.type !== "collect" || !obj.target) continue;
+          if (countOnHand(obj.target) < (progress.objectives[i]?.required ?? obj.count ?? 1)) {
+            return false;
+          }
+        }
+      }
+      return true;
     });
   }
 
-  acceptQuest(characterDid: string, questId: string): ActiveQuestState {
+  acceptQuest(
+    characterDid: string,
+    questId: string,
+    countOnHand?: (itemDefId: string) => number,
+  ): ActiveQuestState {
     const def = this.definitions.get(questId);
     if (!def) throw new Error(`Quest not found: ${questId}`);
 
@@ -113,6 +130,18 @@ export class QuestManager {
       acceptedAt: new Date().toISOString(),
     };
 
+    // Credit collect objectives for items already in inventory
+    if (countOnHand) {
+      for (let i = 0; i < def.objectives.length; i++) {
+        if (def.ordered && i > 0 && !progress.objectives[i - 1].done) break;
+        const obj = def.objectives[i];
+        if (obj.type !== "collect" || !obj.target) continue;
+        const prog = progress.objectives[i];
+        prog.current = Math.min(countOnHand(obj.target), prog.required);
+        prog.done = prog.current >= prog.required;
+      }
+    }
+
     let playerProgress = this.progress.get(characterDid);
     if (!playerProgress) {
       playerProgress = new Map();
@@ -126,13 +155,28 @@ export class QuestManager {
     return this.progress.get(characterDid)?.delete(questId) ?? false;
   }
 
-  /** Complete a quest, return the definition for reward processing */
-  completeQuest(characterDid: string, questId: string): QuestDefinition | null {
+  /**
+   * Complete a quest, return the definition for reward processing.
+   * Unless the definition sets `consumeItems: false`, `consume` is invoked
+   * for each collect objective so the caller can remove the turned-in items.
+   */
+  completeQuest(
+    characterDid: string,
+    questId: string,
+    consume?: (itemDefId: string, count: number) => void,
+  ): QuestDefinition | null {
     const prog = this.getProgress(characterDid, questId);
     const def = this.definitions.get(questId);
     if (!prog || !def) return null;
     prog.status = "completed";
     prog.completedAt = new Date().toISOString();
+    if (consume && def.consumeItems !== false) {
+      for (const obj of def.objectives) {
+        if (obj.type === "collect" && obj.target) {
+          consume(obj.target, obj.count ?? 1);
+        }
+      }
+    }
     return def;
   }
 
@@ -141,9 +185,14 @@ export class QuestManager {
     return this.recordEvent(characterDid, "kill", npcDefId);
   }
 
-  /** Record item collection. Returns questIds whose progress changed. */
-  recordCollect(characterDid: string, itemDefId: string, count: number = 1): string[] {
-    return this.recordEvent(characterDid, "collect", itemDefId, count);
+  /**
+   * Record item collection. `countOnHand` is the player's total inventory
+   * count for the item (possession model), not a pickup delta — dropping and
+   * re-taking an item must not accumulate progress.
+   * Returns questIds whose progress changed.
+   */
+  recordCollect(characterDid: string, itemDefId: string, countOnHand: number = 1): string[] {
+    return this.recordEvent(characterDid, "collect", itemDefId, countOnHand);
   }
 
   /** Record talking to an NPC. Returns questIds whose progress changed. */
@@ -176,16 +225,24 @@ export class QuestManager {
         if (obj.type !== type) continue;
         if (obj.target && obj.target !== targetId) continue;
 
-        // Only advance if previous objectives are done (or this is first)
-        const prevDone = i === 0 || progress.objectives.slice(0, i).every((p) => p.done);
+        // Ordered quests only advance an objective once all previous ones are done
+        const prevDone =
+          !def.ordered || i === 0 || progress.objectives.slice(0, i).every((p) => p.done);
         if (!prevDone) continue;
 
-        prog.current = Math.min(prog.current + count, prog.required);
+        // Collect objectives mirror what's on hand; other types accumulate events
+        const next =
+          type === "collect"
+            ? Math.min(count, prog.required)
+            : Math.min(prog.current + count, prog.required);
+        if (next <= prog.current) continue;
+        prog.current = next;
         if (prog.current >= prog.required) {
           prog.done = true;
         }
         changed = true;
-        break; // Only advance one objective at a time
+        // Ordered quests advance one objective per event; unordered credit every match
+        if (def.ordered) break;
       }
 
       if (changed) updated.push(questId);

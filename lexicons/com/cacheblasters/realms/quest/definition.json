@@ -22,11 +22,16 @@
           },
           "objectives": {
             "type": "array",
-            "description": "Ordered list of objectives to complete",
+            "description": "List of objectives to complete",
             "items": { "type": "ref", "ref": "#objective" }
+          },
+          "ordered": {
+            "type": "boolean",
+            "description": "Whether objectives must be completed in listed order (default true)"
           },
           "rewards": { "type": "ref", "ref": "#rewards" },
           "repeatable": { "type": "boolean", "description": "Whether this quest can be accepted again after completion" },
+          "consumeItems": { "type": "boolean", "description": "Whether collect-objective items are removed from the player's inventory on turn-in (default true)" },
           "tags": {
             "type": "array",
             "items": { "type": "string" }
