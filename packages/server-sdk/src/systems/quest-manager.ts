@@ -19,6 +19,20 @@ export class QuestManager {
   private definitions = new Map<string, QuestDefinition>();
   // characterDid -> questId -> progress
   private progress = new Map<string, Map<string, ActiveQuestState>>();
+  // Inventory lookup for possession-model collect objectives. Keyed by
+  // character DID because the manager is shared across all players.
+  private inventoryLookup?: (characterDid: string, itemDefId: string) => number;
+
+  /**
+   * Register an inventory lookup so collect objectives can be synced from what
+   * the player currently holds. Needed because recordCollect only fires on
+   * pickup events — when an ordered objective completes and unlocks a collect
+   * objective whose items are already on hand, this lets the manager credit
+   * them without waiting for a drop/re-take.
+   */
+  setInventoryLookup(fn: (characterDid: string, itemDefId: string) => number): void {
+    this.inventoryLookup = fn;
+  }
 
   registerDefinition(id: string, def: QuestDefinition): void {
     this.definitions.set(id, def);
@@ -130,16 +144,11 @@ export class QuestManager {
       acceptedAt: new Date().toISOString(),
     };
 
-    // Credit collect objectives for items already in inventory
-    if (countOnHand) {
-      for (let i = 0; i < def.objectives.length; i++) {
-        if (def.ordered && i > 0 && !progress.objectives[i - 1].done) break;
-        const obj = def.objectives[i];
-        if (obj.type !== "collect" || !obj.target) continue;
-        const prog = progress.objectives[i];
-        prog.current = Math.min(countOnHand(obj.target), prog.required);
-        prog.done = prog.current >= prog.required;
-      }
+    // Credit collect objectives for items already in inventory. Falls back to
+    // the registered inventory lookup when no explicit count is supplied.
+    const lookup = countOnHand ?? this.boundInventoryLookup(characterDid);
+    if (lookup) {
+      this.syncCollectFromInventory(def, progress, lookup);
     }
 
     let playerProgress = this.progress.get(characterDid);
@@ -245,10 +254,52 @@ export class QuestManager {
         if (def.ordered) break;
       }
 
+      // Completing an ordered objective can unlock a collect objective whose
+      // items are already on hand. recordCollect only fires on pickup events,
+      // so re-sync newly reachable collect objectives from inventory here;
+      // this cascades through consecutive collect objectives that are met.
+      if (changed && def.ordered) {
+        const lookup = this.boundInventoryLookup(characterDid);
+        if (lookup) this.syncCollectFromInventory(def, progress, lookup);
+      }
+
       if (changed) updated.push(questId);
     }
 
     return updated;
+  }
+
+  /** Bind the registered inventory lookup to a character, if one is set. */
+  private boundInventoryLookup(characterDid: string): ((itemDefId: string) => number) | undefined {
+    const lookup = this.inventoryLookup;
+    return lookup ? (itemDefId: string) => lookup(characterDid, itemDefId) : undefined;
+  }
+
+  /**
+   * Sync collect objectives to what the player holds (possession model),
+   * honoring quest order: ordered quests stop at the first incomplete
+   * prerequisite, so completing one collect objective can cascade to unlock
+   * and satisfy the next. Returns whether any objective changed.
+   */
+  private syncCollectFromInventory(
+    def: QuestDefinition,
+    progress: ActiveQuestState,
+    countOnHand: (itemDefId: string) => number,
+  ): boolean {
+    let changed = false;
+    for (let i = 0; i < def.objectives.length; i++) {
+      if (def.ordered && i > 0 && !progress.objectives[i - 1].done) break;
+      const obj = def.objectives[i];
+      if (obj.type !== "collect" || !obj.target) continue;
+      const prog = progress.objectives[i];
+      if (prog.done) continue;
+      const next = Math.min(countOnHand(obj.target), prog.required);
+      if (next <= prog.current) continue;
+      prog.current = next;
+      if (prog.current >= prog.required) prog.done = true;
+      changed = true;
+    }
+    return changed;
   }
 
   /** Build a quest_update payload for sending to the client */

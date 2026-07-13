@@ -362,6 +362,98 @@ describe("QuestManager", () => {
       expect(progress.objectives[2].done).toBe(true);
     });
 
+    test("ordered quest syncs a newly unlocked collect objective from inventory", () => {
+      const qm = new QuestManager();
+      // Player holds 5 hides the whole time
+      qm.setInventoryLookup((_did, itemDefId) => (itemDefId === "hide" ? 5 : 0));
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1", () => 5);
+
+      // Collect is locked behind the kill, so accepting credits nothing
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
+
+      const updated = qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[0].done).toBe(true);
+      expect(prog.objectives[1].current).toBe(5);
+      expect(prog.objectives[1].done).toBe(true);
+      expect(updated).toEqual(["q1"]);
+    });
+
+    test("ordered quest cascades sync through consecutive collect objectives", () => {
+      const qm = new QuestManager();
+      qm.setInventoryLookup((_did, itemDefId) =>
+        itemDefId === "hide" ? 5 : itemDefId === "pelt" ? 3 : 0,
+      );
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+            { type: "collect", target: "pelt", description: "Collect 3 pelts", count: 3 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[1].done).toBe(true);
+      expect(prog.objectives[2].done).toBe(true);
+    });
+
+    test("without an inventory lookup, unlocked collect objectives are not synced", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[0].done).toBe(true);
+      expect(prog.objectives[1].current).toBe(0);
+      expect(prog.objectives[1].done).toBe(false);
+    });
+
+    test("unordered quests do not re-sync collect objectives on unlock", () => {
+      const qm = new QuestManager();
+      // Registered lookup reports 5 hides on hand
+      qm.setInventoryLookup(() => 5);
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          ordered: false,
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      // Accept with an empty inventory so the accept-time sync credits nothing
+      qm.acceptQuest(PLAYER, "q1", () => 0);
+
+      qm.recordKill(PLAYER, "goblin");
+      // Unordered collect objectives only advance on collect events, never via
+      // a kill-triggered re-sync
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
+    });
+
     test("recordVisit tracks room visits", () => {
       const qm = new QuestManager();
       qm.registerDefinition(
