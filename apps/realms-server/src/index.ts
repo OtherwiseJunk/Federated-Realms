@@ -44,6 +44,12 @@ const commandLimiter = new RateLimiter(30, 1_000); // 30 commands per second per
 const MAX_WS_MESSAGE_SIZE = 4096; // 4KB max WebSocket message
 const world = new WorldManager(config);
 const sessions = new SessionManager();
+
+// Let quest tracking read live inventory so collect objectives unlocked
+// mid-quest (e.g. after a kill) credit items already on hand.
+world.questManager.setInventoryLookup(
+  (characterDid, itemDefId) => sessions.getSessionByDid(characterDid)?.countItem(itemDefId) ?? 0,
+);
 const bluesky = new BlueskyBridge(config.bluesky);
 const serverIdentity = new ServerIdentity();
 const oauthClient = new GameOAuthClient();
