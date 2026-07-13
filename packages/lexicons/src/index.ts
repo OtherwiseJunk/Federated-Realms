@@ -182,9 +182,16 @@ export type FederationRegistration = Omit<
 
 // ── Items ──
 
-export type ItemDefinition = Omit<_ItemDefinition, "$type" | "properties"> & {
+export type ItemDefinition = Omit<
+  _ItemDefinition,
+  "$type" | "properties" | "stackable" | "maxStack"
+> & {
   $type?: string;
   properties?: ItemProperties;
+  /** Required in-memory; record readers apply the lexicon default (false) when absent */
+  stackable: boolean;
+  /** Required in-memory; record readers derive the default (stackable ? 99 : 1) when absent */
+  maxStack: number;
 };
 
 // ── NPCs ──

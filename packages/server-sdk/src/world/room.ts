@@ -1,6 +1,6 @@
-import type { RoomRecord, Direction, RoomExit } from "@realms/lexicons";
+import type { RoomRecord, Direction, RoomExit, ItemDefinition } from "@realms/lexicons";
 import type { RoomState, RoomFeature, EntityBrief, ItemInstance } from "@realms/common";
-import { findExit, hasFlag } from "@realms/common";
+import { findExit, hasFlag, addItemToStacks, splitItemStack } from "@realms/common";
 
 export class Room {
   readonly id: string;
@@ -59,15 +59,8 @@ export class Room {
     return [...this.npcs.keys()];
   }
 
-  addGroundItem(item: ItemInstance, stackable: boolean = false): void {
-    if (stackable) {
-      const existing = this.groundItems.find((i) => i.definitionId === item.definitionId);
-      if (existing) {
-        existing.quantity += item.quantity;
-        return;
-      }
-    }
-    this.groundItems.push(item);
+  addGroundItem(item: ItemInstance, definition: ItemDefinition | undefined): void {
+    addItemToStacks(this.groundItems, item, definition);
   }
 
   removeGroundItem(identifier: string, quantity: number = 1): ItemInstance | undefined {
@@ -84,14 +77,7 @@ export class Room {
       return item;
     }
 
-    item.quantity -= quantity;
-    return {
-      instanceId: item.instanceId,
-      definitionId: item.definitionId,
-      name: item.name,
-      quantity,
-      properties: item.properties,
-    };
+    return splitItemStack(item, quantity);
   }
 
   findGroundItem(identifier: string): ItemInstance | undefined {

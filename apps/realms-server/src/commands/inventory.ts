@@ -67,7 +67,8 @@ function handleTake(cmd: ParsedCommand, ctx: CommandContext): void {
     return;
   }
 
-  session.addItem(item);
+  const pickedUpDef = world.areaManager.getItemDefinition(item.definitionId);
+  session.addItem(item, pickedUpDef);
   session.attestations.recordItemGrant(item.definitionId);
 
   recordQuestCollect(ctx, item.definitionId);
@@ -109,7 +110,7 @@ function handleDrop(cmd: ParsedCommand, ctx: CommandContext): void {
   }
 
   const def = world.areaManager.getItemDefinition(item.definitionId);
-  room.addGroundItem(item, def?.stackable ?? false);
+  room.addGroundItem(item, def);
 
   const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
   sendNarrative(session, `You drop ${item.name}${qty}.`, "info");

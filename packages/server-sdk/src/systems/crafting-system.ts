@@ -180,7 +180,7 @@ export class CraftingSystem {
       };
     }
     const outputItem = createItemInstance(matchDef.output.itemId, outputDef, matchDef.output.count);
-    session.addItem(outputItem);
+    session.addItem(outputItem, outputDef);
     session.attestations.recordItemGrant(matchDef.output.itemId);
 
     return {
@@ -240,7 +240,7 @@ export class CraftingSystem {
         const def = itemDefs.get(yld.itemId);
         if (def) {
           const item = createItemInstance(yld.itemId, def, count);
-          session.addItem(item);
+          session.addItem(item, def);
           session.attestations.recordItemGrant(yld.itemId);
           gained.push({ itemId: yld.itemId, name: def.name, count });
         }

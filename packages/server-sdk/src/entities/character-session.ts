@@ -1,6 +1,11 @@
-import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
+import type { CharacterProfile, FormulaDef, ItemDefinition } from "@realms/lexicons";
 import type { CharacterState, ItemInstance } from "@realms/common";
-import { profileToState, computeDerivedStats } from "@realms/common";
+import {
+  profileToState,
+  computeDerivedStats,
+  addItemToStacks,
+  splitItemStack,
+} from "@realms/common";
 import type { ServerWebSocket } from "bun";
 import { AttestationTracker } from "../atproto/attestation-tracker.js";
 import type { ServerIdentity } from "../atproto/server-identity.js";
@@ -68,13 +73,8 @@ export class CharacterSession {
     }
   }
 
-  addItem(item: ItemInstance): void {
-    const existing = this.state.inventory.find((i) => i.definitionId === item.definitionId);
-    if (existing) {
-      existing.quantity += item.quantity;
-    } else {
-      this.state.inventory.push({ ...item });
-    }
+  addItem(item: ItemInstance, definition: ItemDefinition | undefined): void {
+    addItemToStacks(this.state.inventory, item, definition);
   }
 
   removeItem(identifier: string, quantity: number = 1): ItemInstance | undefined {
@@ -90,14 +90,7 @@ export class CharacterSession {
       return item;
     }
 
-    item.quantity -= quantity;
-    return {
-      instanceId: item.instanceId,
-      definitionId: item.definitionId,
-      name: item.name,
-      quantity,
-      properties: item.properties,
-    };
+    return splitItemStack(item, quantity);
   }
 
   findItem(identifier: string): ItemInstance | undefined {

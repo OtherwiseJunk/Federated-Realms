@@ -1,7 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { CharacterSession } from "./character-session.js";
-import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
+import type { CharacterProfile, FormulaDef, ItemDefinition } from "@realms/lexicons";
 import type { ItemInstance } from "@realms/common";
+
+const SWORD_DEF: ItemDefinition = {
+  name: "Iron Sword",
+  type: "weapon",
+  description: "A sword.",
+  stackable: false,
+  maxStack: 1,
+};
+
+const POTION_DEF: ItemDefinition = {
+  name: "Health Potion",
+  type: "consumable",
+  description: "Heals.",
+  stackable: true,
+  maxStack: 10,
+};
 
 const FORMULAS: Record<string, FormulaDef> = {
   maxHp: { name: "Max HP", expression: "20 + (level - 1) * 8 + floor(con / 2)", min: 1 },
@@ -69,7 +85,7 @@ describe("CharacterSession", () => {
   describe("inventory", () => {
     test("add and find items", () => {
       const session = makeSession();
-      session.addItem(makeItem());
+      session.addItem(makeItem(), SWORD_DEF);
 
       expect(session.findItem("Iron Sword")).toBeDefined();
       expect(session.findItem("sword")).toBeDefined();
@@ -77,10 +93,19 @@ describe("CharacterSession", () => {
       expect(session.findItem("missing")).toBeUndefined();
     });
 
-    test("stacks items with same definitionId", () => {
+    test("non-stackable items never merge", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 2 }));
-      session.addItem(makeItem({ instanceId: "item-2", quantity: 3 }));
+      session.addItem(makeItem(), SWORD_DEF);
+      session.addItem(makeItem({ instanceId: "item-2" }), SWORD_DEF);
+
+      expect(session.inventory).toHaveLength(2);
+    });
+
+    test("stackable items merge by definitionId up to maxStack", () => {
+      const session = makeSession();
+      const potion = makeItem({ definitionId: "area:potion", name: "Health Potion" });
+      session.addItem({ ...potion, quantity: 2 }, POTION_DEF);
+      session.addItem({ ...potion, instanceId: "item-2", quantity: 3 }, POTION_DEF);
 
       expect(session.inventory).toHaveLength(1);
       expect(session.inventory[0].quantity).toBe(5);
@@ -88,20 +113,24 @@ describe("CharacterSession", () => {
 
     test("removeItem removes full stack", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 3 }));
+      session.addItem(makeItem({ quantity: 3 }), SWORD_DEF);
 
       const removed = session.removeItem("Iron Sword", 5);
       expect(removed?.quantity).toBe(3);
       expect(session.inventory).toHaveLength(0);
     });
 
-    test("removeItem removes partial stack", () => {
+    test("removeItem partial stack mints a fresh instance with independent properties", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 5 }));
+      session.addItem(makeItem({ quantity: 5, properties: { charges: 2 } }), SWORD_DEF);
 
       const removed = session.removeItem("Iron Sword", 2);
       expect(removed?.quantity).toBe(2);
       expect(session.inventory[0].quantity).toBe(3);
+      expect(removed?.instanceId).not.toBe("item-1");
+
+      (removed!.properties as { charges: number }).charges = 99;
+      expect(session.inventory[0].properties).toEqual({ charges: 2 });
     });
 
     test("removeItem returns undefined for missing items", () => {
@@ -112,13 +141,13 @@ describe("CharacterSession", () => {
     test("countItem returns quantity by definitionId", () => {
       const session = makeSession();
       expect(session.countItem("area:sword")).toBe(0);
-      session.addItem(makeItem({ quantity: 7 }));
+      session.addItem(makeItem({ quantity: 7 }), SWORD_DEF);
       expect(session.countItem("area:sword")).toBe(7);
     });
 
     test("removeItemByDefId removes by definitionId", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 5 }));
+      session.addItem(makeItem({ quantity: 5 }), SWORD_DEF);
 
       expect(session.removeItemByDefId("area:sword", 3)).toBe(true);
       expect(session.inventory[0].quantity).toBe(2);

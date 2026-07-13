@@ -252,8 +252,8 @@ export class AreaManager {
           value: def.value,
           rarity: def.rarity,
           levelRequired: def.levelRequired,
-          stackable: def.stackable,
-          maxStack: def.maxStack,
+          stackable: def.stackable ?? false,
+          maxStack: def.maxStack ?? (def.stackable ? 99 : 1),
           properties: def.properties,
           tags: def.tags,
         };
@@ -277,10 +277,10 @@ export class AreaManager {
               continue;
             }
             if (def.stackable) {
-              room.addGroundItem(createItemInstance(defId, def, item.quantity), true);
+              room.addGroundItem(createItemInstance(defId, def, item.quantity), def);
             } else {
               for (let n = 0; n < item.quantity; n++) {
-                room.addGroundItem(createItemInstance(defId, def, 1));
+                room.addGroundItem(createItemInstance(defId, def, 1), def);
               }
             }
           }

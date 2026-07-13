@@ -51,8 +51,8 @@ export class WorldPublisher {
         value: item.value,
         rarity: item.rarity,
         levelRequired: item.levelRequired,
-        stackable: item.stackable,
-        maxStack: item.maxStack,
+        stackable: item.stackable ? true : undefined,
+        maxStack: item.maxStack === (item.stackable ? 99 : 1) ? undefined : item.maxStack,
         properties: item.properties,
         tags: item.tags?.length ? item.tags : undefined,
       });

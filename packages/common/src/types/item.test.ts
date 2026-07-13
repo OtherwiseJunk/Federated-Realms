@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createItemInstance, generateItemId } from "./item.js";
+import { createItemInstance, generateItemId, addItemToStacks, splitItemStack } from "./item.js";
+import type { ItemInstance } from "./item.js";
 import type { ItemDefinition } from "@realms/lexicons";
 
 describe("generateItemId", () => {
@@ -23,6 +24,8 @@ describe("createItemInstance", () => {
     description: "A basic sword.",
     weight: 3,
     value: 10,
+    stackable: false,
+    maxStack: 1,
   };
 
   const potion: ItemDefinition = {
@@ -61,9 +64,114 @@ describe("createItemInstance", () => {
       name: "Magic Ring",
       type: "accessory",
       description: "Shiny.",
+      stackable: false,
+      maxStack: 1,
       properties: { bonus_hp: 5, slot: "ring" },
     };
     const item = createItemInstance("test:ring", def);
     expect(item.properties).toEqual({ bonus_hp: 5, slot: "ring" });
+  });
+});
+
+describe("addItemToStacks", () => {
+  const swordDef: ItemDefinition = {
+    name: "Iron Sword",
+    type: "weapon",
+    description: "A sword.",
+    stackable: false,
+    maxStack: 1,
+  };
+
+  const potionDef: ItemDefinition = {
+    name: "Health Potion",
+    type: "consumable",
+    description: "Heals.",
+    stackable: true,
+    maxStack: 10,
+  };
+
+  function makeInstance(overrides: Partial<ItemInstance> = {}): ItemInstance {
+    return {
+      instanceId: generateItemId(),
+      definitionId: "area:item",
+      name: "Item",
+      quantity: 1,
+      properties: {},
+      ...overrides,
+    };
+  }
+
+  test("stackable items merge into an existing stack", () => {
+    const stacks: ItemInstance[] = [];
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:potion", quantity: 3 }), potionDef);
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:potion", quantity: 2 }), potionDef);
+
+    expect(stacks).toHaveLength(1);
+    expect(stacks[0].quantity).toBe(5);
+  });
+
+  test("non-stackable items never merge", () => {
+    const stacks: ItemInstance[] = [];
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:sword" }), swordDef);
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:sword" }), swordDef);
+
+    expect(stacks).toHaveLength(2);
+  });
+
+  test("a missing definition is treated as non-stackable", () => {
+    const stacks: ItemInstance[] = [];
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:mystery" }), undefined);
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:mystery" }), undefined);
+
+    expect(stacks).toHaveLength(2);
+  });
+
+  test("overflow beyond maxStack stays a separate instance", () => {
+    const stacks: ItemInstance[] = [];
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:potion", quantity: 8 }), potionDef);
+    addItemToStacks(stacks, makeInstance({ definitionId: "area:potion", quantity: 5 }), potionDef);
+
+    expect(stacks).toHaveLength(2);
+    expect(stacks[0].quantity).toBe(10);
+    expect(stacks[1].quantity).toBe(3);
+  });
+});
+
+describe("splitItemStack", () => {
+  function makeInstance(): ItemInstance {
+    return {
+      instanceId: "original-id",
+      definitionId: "area:potion",
+      name: "Health Potion",
+      quantity: 5,
+      properties: { charges: 2 },
+    };
+  }
+
+  test("mints a fresh instanceId distinct from the source", () => {
+    const source = makeInstance();
+    const split = splitItemStack(source, 2);
+
+    expect(split.instanceId).not.toBe("original-id");
+    expect(split.instanceId).toMatch(/^item_/);
+  });
+
+  test("decrements the source quantity and carries the split quantity", () => {
+    const source = makeInstance();
+    const split = splitItemStack(source, 2);
+
+    expect(source.quantity).toBe(3);
+    expect(split.quantity).toBe(2);
+  });
+
+  test("clones properties so the split and source are independent", () => {
+    const source = makeInstance();
+    const split = splitItemStack(source, 2);
+
+    expect(split.properties).toEqual({ charges: 2 });
+    expect(split.properties).not.toBe(source.properties);
+
+    (split.properties as { charges: number }).charges = 99;
+    expect(source.properties).toEqual({ charges: 2 });
   });
 });

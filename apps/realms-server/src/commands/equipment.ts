@@ -82,7 +82,8 @@ function handleEquip(cmd: ParsedCommand, ctx: CommandContext): void {
   // Unequip existing item in that slot
   const previous = session.unequip(slot);
   if (previous) {
-    session.addItem(previous);
+    const previousDef = world.areaManager.getItemDefinition(previous.definitionId);
+    session.addItem(previous, previousDef);
     sendNarrative(session, `You unequip ${previous.name}.`, "info");
   }
 
@@ -95,7 +96,7 @@ function handleEquip(cmd: ParsedCommand, ctx: CommandContext): void {
 }
 
 function handleUnequip(cmd: ParsedCommand, ctx: CommandContext): void {
-  const { session } = ctx;
+  const { session, world } = ctx;
   const slotOrName = cmd.args.join(" ");
 
   if (!slotOrName) {
@@ -131,7 +132,8 @@ function handleUnequip(cmd: ParsedCommand, ctx: CommandContext): void {
     return;
   }
 
-  session.addItem(item);
+  const def = world.areaManager.getItemDefinition(item.definitionId);
+  session.addItem(item, def);
   sendNarrative(session, `You unequip ${item.name}.`, "info");
   sendUpdates(ctx);
 }
