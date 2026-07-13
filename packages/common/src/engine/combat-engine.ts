@@ -204,13 +204,20 @@ export function resolvePlayerAttack(
   };
 }
 
-/** Calculate NPC attack against a player */
+/**
+ * Calculate NPC attack against a player.
+ *
+ * `acBonus` is a temporary defensive bonus (e.g. from defending) folded directly
+ * into the player's AC. Callers pass the AC value they want (defend is +4 AC) —
+ * they must not mutate player attributes to encode it.
+ */
 export function resolveNpcAttack(
   npcAttrs: Attributes | undefined,
   npcLevel: number,
   npcName: string,
   playerAttrs: Attributes,
   playerEquipment: Record<string, ItemInstance>,
+  acBonus: number = 0,
 ): AttackResult {
   const roll = rollD20();
   const critical = roll === 20;
@@ -221,10 +228,10 @@ export function resolveNpcAttack(
   const attackBonus = npcDexMod + Math.floor(npcLevel / 2);
   const totalAttack = roll + attackBonus;
 
-  // Player defense: 10 + dex modifier + armor
+  // Player defense: 10 + dex modifier + armor + temporary AC bonus (e.g. defend)
   const playerDexMod = attrMod(getAttr(playerAttrs, "dex"));
   const armorDefense = getEquippedDefense(playerEquipment);
-  const defense = 10 + playerDexMod + armorDefense;
+  const defense = 10 + playerDexMod + armorDefense + acBonus;
 
   const hit = critical || totalAttack >= defense;
 

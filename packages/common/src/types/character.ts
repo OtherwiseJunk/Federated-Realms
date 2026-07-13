@@ -94,6 +94,51 @@ export function evaluateFormula(expression: string, variables: Record<string, nu
   }
 }
 
+// ── Derived stat formula defaults ──
+//
+// The engine assumes a formula exists for every core derived stat (maxHp,
+// maxMp, maxAp). When a formula is missing, derived-stat consumers are forced
+// to fall back to already-mutated current values, which silently compounds
+// equipment bonuses (issue #81). Rather than scatter fallbacks at every use
+// site, we guarantee the invariant at the IO boundary: any system whose
+// formulas omit a core stat is normalized to carry the reference default.
+//
+// These defaults mirror apps/realms-server/data/system.yml so the shipped
+// reference server behaves identically whether or not it declares them.
+export const DEFAULT_DERIVED_FORMULAS: Record<string, FormulaDef> = {
+  maxHp: {
+    name: "Max Hit Points",
+    expression: "20 + (level - 1) * 8 + floor(con / 2)",
+    min: 1,
+  },
+  maxMp: {
+    name: "Max Mana Points",
+    expression: "10 + (level - 1) * 4 + floor(int / 3)",
+    min: 0,
+  },
+  maxAp: {
+    name: "Max Action Points",
+    expression: "4 + floor((dex - 10) / 4)",
+    min: 2,
+    max: 12,
+  },
+};
+
+/**
+ * Return a formula map guaranteed to define every core derived stat.
+ * Formulas supplied by the caller always win; only missing core stats are
+ * filled from {@link DEFAULT_DERIVED_FORMULAS}. The input is not mutated.
+ */
+export function withDefaultFormulas(
+  formulas: Record<string, FormulaDef>,
+): Record<string, FormulaDef> {
+  const result: Record<string, FormulaDef> = { ...formulas };
+  for (const [id, def] of Object.entries(DEFAULT_DERIVED_FORMULAS)) {
+    if (!result[id]) result[id] = def;
+  }
+  return result;
+}
+
 // ── Derived stat computation ──
 
 export function computeDerivedStats(

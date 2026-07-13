@@ -22,13 +22,16 @@ function makeProfile(overrides: Partial<CharacterProfile> = {}): CharacterProfil
   };
 }
 
-function makeSession(profileOverrides: Partial<CharacterProfile> = {}): CharacterSession {
+function makeSession(
+  profileOverrides: Partial<CharacterProfile> = {},
+  formulas: Record<string, FormulaDef> = FORMULAS,
+): CharacterSession {
   return new CharacterSession(
     "session-1",
     "did:plc:test",
     makeProfile(profileOverrides),
     "test-area:spawn",
-    FORMULAS,
+    formulas,
   );
 }
 
@@ -63,6 +66,22 @@ describe("CharacterSession", () => {
       expect(session.inCombat).toBe(false);
       expect(session.isConnected).toBe(false);
       expect(session.isDead).toBe(false);
+    });
+
+    test("missing derived-stat formulas are normalized to defaults", () => {
+      const session = makeSession({}, {});
+      // Defaults match the reference system.yml (con 13, int 10, dex 12, level 1)
+      expect(session.state.maxHp).toBe(26); // 20 + 0 + floor(13 / 2)
+      expect(session.state.maxMp).toBe(13); // 10 + 0 + floor(10 / 3)
+      expect(session.state.maxAp).toBe(4); // 4 + floor((12 - 10) / 4)
+      expect(session.state.currentHp).toBe(26);
+    });
+
+    test("partial formulas keep provided entries and default the rest", () => {
+      const session = makeSession({}, { maxHp: { name: "Max HP", expression: "100", min: 1 } });
+      expect(session.state.maxHp).toBe(100);
+      expect(session.state.maxMp).toBe(13); // default
+      expect(session.state.maxAp).toBe(4); // default
     });
   });
 
@@ -154,6 +173,59 @@ describe("CharacterSession", () => {
       );
       expect(replaced?.name).toBe("Old Sword");
       expect(session.getEquipped("mainHand")?.name).toBe("New Sword");
+    });
+
+    test("equip/unequip does not compound bonuses when formulas are missing", () => {
+      const session = makeSession({}, {});
+      const hpBefore = session.state.maxHp;
+      const ring = makeItem({
+        instanceId: "ring-1",
+        name: "Ring of Vitality",
+        properties: { bonus_hp: 10 },
+      });
+
+      session.equip("ring", ring);
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      session.unequip("ring");
+      expect(session.state.maxHp).toBe(hpBefore);
+
+      session.equip("ring", ring);
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      session.unequip("ring");
+      expect(session.state.maxHp).toBe(hpBefore);
+    });
+
+    test("repeated recalculation while equipped is idempotent", () => {
+      const session = makeSession({}, {});
+      const hpBefore = session.state.maxHp;
+
+      session.equip(
+        "ring",
+        makeItem({
+          instanceId: "ring-1",
+          name: "Ring of Vitality",
+          properties: { bonus_hp: 10 },
+        }),
+      );
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      // Effect expiry triggers recalculateDerived (same path as tickEffects in play)
+      for (let i = 0; i < 3; i++) {
+        session.state.activeEffects = [
+          {
+            id: `fx-${i}`,
+            name: "Blink",
+            type: "buff",
+            attribute: "wis",
+            magnitude: 0,
+            remainingTicks: 1,
+          },
+        ];
+        session.tickEffects();
+        expect(session.state.maxHp).toBe(hpBefore + 10);
+      }
     });
 
     test("equipment bonuses affect derived stats", () => {

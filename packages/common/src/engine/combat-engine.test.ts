@@ -306,6 +306,51 @@ describe("attack resolution", () => {
     expect(result.attackBonus).toBe(3); // dexMod(14)=2 + floor(2/2)=1
     expect(result.defense).toBe(10); // 10 + dexMod(10)=0 + 0 armor
   });
+
+  test("resolveNpcAttack folds an explicit AC bonus into defense", () => {
+    const withoutBonus = resolveNpcAttack(
+      { str: 12, dex: 14 },
+      2,
+      "Wolf",
+      { str: 10, dex: 10 },
+      {},
+    );
+    const withBonus = resolveNpcAttack(
+      { str: 12, dex: 14 },
+      2,
+      "Wolf",
+      { str: 10, dex: 10 },
+      {},
+      4,
+    );
+    expect(withBonus.defense).toBe(withoutBonus.defense + 4);
+  });
+
+  test("acBonus 4 matches the legacy dex+8 defend encoding", () => {
+    // Legacy defend path bumped dex by 8 (attrMod(+8)/2 = +4 AC). The explicit
+    // acBonus of 4 must produce the identical player defense.
+    const legacyDefense = resolveNpcAttack(
+      { dex: 12 },
+      1,
+      "Wolf",
+      { dex: 10 + 8 }, // base dex 10, defend applied as +8 dex
+      {},
+    ).defense;
+    const explicitDefense = resolveNpcAttack(
+      { dex: 12 },
+      1,
+      "Wolf",
+      { dex: 10 }, // unmutated base dex
+      {},
+      4,
+    ).defense;
+    expect(explicitDefense).toBe(legacyDefense);
+  });
+
+  test("resolveNpcAttack defaults acBonus to 0", () => {
+    const result = resolveNpcAttack({ dex: 12 }, 1, "Wolf", { dex: 10 }, {});
+    expect(result.defense).toBe(10); // 10 + dexMod(10)=0 + 0 armor + 0 acBonus
+  });
 });
 
 describe("XP and leveling", () => {
