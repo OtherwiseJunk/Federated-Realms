@@ -13,7 +13,7 @@ const main = l.procedure(
   $nsid,
   l.params(),
   l.jsonPayload({
-    name: l.string({ maxLength: 64 }),
+    name: l.string({ minLength: 1, maxLength: 64, maxGraphemes: 64 }),
     classId: l.string(),
     raceId: l.string(),
   }),

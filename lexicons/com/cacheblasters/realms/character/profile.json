@@ -10,7 +10,13 @@
         "type": "object",
         "required": ["name", "class", "race", "level", "experience", "attributes", "createdAt"],
         "properties": {
-          "name": { "type": "string", "maxLength": 64 },
+          "name": {
+            "type": "string",
+            "description": "Player-chosen cosmetic display name. Not used for addressing.",
+            "minLength": 1,
+            "maxLength": 64,
+            "maxGraphemes": 64
+          },
           "class": {
             "type": "string",
             "description": "Class ID referencing the originating server's system.class definition"
