@@ -29,6 +29,7 @@ import {
 } from "./commands/index.js";
 import type { CharacterProfile } from "@realms/lexicons";
 import { OAuthCallbackError } from "@atproto/oauth-client-node";
+import { validateCreateCharacterInput } from "./create-character.js";
 
 const config = loadConfig(decodeURIComponent(new URL("../data", import.meta.url).pathname));
 
@@ -738,11 +739,9 @@ const server = Bun.serve<SessionData>({
               { status: 400 },
             );
           }
-          if (body.name.length > 32 || body.classId.length > 64 || body.raceId.length > 64) {
-            return Response.json(
-              { error: "Field length exceeds maximum allowed" },
-              { status: 400 },
-            );
+          const validated = validateCreateCharacterInput(body);
+          if (!validated.ok) {
+            return Response.json({ error: validated.error }, { status: 400 });
           }
 
           const agent = await oauthClient.restore(did);
@@ -754,7 +753,7 @@ const server = Bun.serve<SessionData>({
           }
 
           // Build character profile using this server's game system
-          const profile = buildCharacterProfile(body.name, body.classId, body.raceId);
+          const profile = buildCharacterProfile(validated.name, body.classId, body.raceId);
 
           // Write to player's PDS
           await pdsClient.saveCharacter(agent, did, profile);
