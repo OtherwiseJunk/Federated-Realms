@@ -38,6 +38,12 @@ describe("validateCharacterName", () => {
     expect(validateCharacterName("System")).toMatchObject({ ok: false });
     expect(validateCharacterName("  admin ")).toMatchObject({ ok: false });
   });
+  test("rejects Unicode tag characters (ASCII-smuggling vector)", () => {
+    expect(validateCharacterName("System\u{E0061}")).toMatchObject({ ok: false });
+  });
+  test("rejects variation selectors", () => {
+    expect(validateCharacterName("Admin\u{FE0F}")).toMatchObject({ ok: false });
+  });
 });
 
 describe("handleLocalPart", () => {

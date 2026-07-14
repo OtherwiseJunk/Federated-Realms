@@ -1,11 +1,12 @@
 const MIN_GRAPHEMES = 1;
 const MAX_GRAPHEMES = 64;
 
-// Control (C0/C1), soft hyphen, zero-width / invisible-format chars, bidi &
-// format overrides, and BOM — corrupt rendering or hide content.
-const FORBIDDEN =
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/u;
+// All control and format characters (\p{Cc} = C0/C1 controls; \p{Cf} = every
+// format char: soft hyphen, ZWSP/ZWNJ/ZWJ, LRM/RLM, bidi embeds/overrides/
+// isolates, BOM, and the Unicode Tag block U+E0000-E007F used for ASCII
+// smuggling), plus variation selectors (\p{Mn}, not covered by Cf) — these
+// corrupt rendering, hide content, or forge otherwise-reserved names.
+const FORBIDDEN = /[\p{Cc}\p{Cf}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u;
 
 // At least one letter/number/symbol/punctuation, so a name is never only
 // whitespace or combining marks.
