@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { validateCharacterName } from "@realms/common";
 import "./pages.css";
 
 interface ClassInfo {
@@ -22,7 +23,7 @@ interface Props {
   classes: ClassInfo[];
   races: RaceInfo[];
   playerName: string;
-  onComplete: (classId: string, raceId: string) => void;
+  onComplete: (name: string, classId: string, raceId: string) => void;
 }
 
 type Phase = "class" | "race" | "confirm";
@@ -31,9 +32,11 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
   const [phase, setPhase] = useState<Phase>("class");
   const [classIndex, setClassIndex] = useState(0);
   const [raceIndex, setRaceIndex] = useState(0);
+  const [name, setName] = useState(playerName);
 
   const selectedClass = classes[classIndex];
   const selectedRace = races[raceIndex];
+  const nameCheck = validateCharacterName(name);
 
   if (phase === "confirm") {
     const combined: Record<string, number> = {};
@@ -48,7 +51,7 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
       <div className="page-container">
         <h2 style={{ color: "var(--color-cyan)" }}>Confirm Your Character</h2>
         <div className="create-card create-card-active">
-          <div className="bold">{playerName}</div>
+          <div className="bold">{nameCheck.ok ? nameCheck.name : name}</div>
           <div>
             <span className="dim">Class: </span>
             <span style={{ color: "var(--color-yellow)" }}>{selectedClass.name}</span>
@@ -78,7 +81,10 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
           </button>
           <button
             className="page-button page-button-primary"
-            onClick={() => onComplete(selectedClass.id, selectedRace.id)}
+            disabled={!nameCheck.ok}
+            onClick={() =>
+              onComplete(nameCheck.ok ? nameCheck.name : name, selectedClass.id, selectedRace.id)
+            }
           >
             Enter the Realm
           </button>
@@ -98,7 +104,14 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
         <h2 style={{ color: "var(--color-yellow)" }}>Create Your Character</h2>
         <div>
           <span className="dim">Name: </span>
-          <span style={{ color: "var(--color-green)", fontWeight: "bold" }}>{playerName}</span>
+          <input
+            className="page-input"
+            value={name}
+            maxLength={64}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Character name"
+          />
+          {!nameCheck.ok && <span className="dim">{nameCheck.error}</span>}
           {phase === "race" && (
             <>
               <span className="dim"> | Class: </span>

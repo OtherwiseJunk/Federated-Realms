@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect } from "react";
 import { WsClient } from "./connection/ws-client.js";
 import { useGameState } from "./hooks/use-game-state.js";
 import { SPLASH_ART, SPLASH_SUBTITLE, SPLASH_BYLINE } from "@realms/client-common";
+import { handleLocalPart } from "@realms/common";
 import { saveProfile, loadProfile } from "./connection/profile-storage.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { RoomPanel } from "./components/RoomPanel.js";
@@ -144,6 +145,7 @@ export function App() {
         setAuthSessionId(result.sessionId);
         setPhase("play");
       } else if (result.needsCharacter) {
+        if (result.handle) setPlayerName(handleLocalPart(result.handle));
         if (result.gameSystem) {
           setSystem(result.gameSystem as SystemData);
         } else {
@@ -158,11 +160,15 @@ export function App() {
     [account, serverUrl],
   );
 
-  const handleCreateComplete = useCallback((chosenClass: string, chosenRace: string) => {
-    setFinalClass(chosenClass);
-    setFinalRace(chosenRace);
-    setPhase("play");
-  }, []);
+  const handleCreateComplete = useCallback(
+    (chosenName: string, chosenClass: string, chosenRace: string) => {
+      setPlayerName(chosenName);
+      setFinalClass(chosenClass);
+      setFinalRace(chosenRace);
+      setPhase("play");
+    },
+    [],
+  );
 
   // -- Connect when entering play phase --
 
@@ -188,7 +194,7 @@ export function App() {
                 Authorization: `Bearer ${authToken}`,
               },
               body: JSON.stringify({
-                name: playerName || account.handle || "Adventurer",
+                name: playerName,
                 classId: finalClass,
                 raceId: finalRace,
               }),
@@ -214,7 +220,7 @@ export function App() {
         host: url.hostname,
         port: parseInt(url.port || (url.protocol === "https:" ? "443" : "80"), 10),
         tls: url.protocol === "https:",
-        name: playerName || `Adventurer_${Math.floor(Math.random() * 9999)}`,
+        name: playerName,
         classId: finalClass,
         raceId: finalRace,
       });
@@ -280,7 +286,7 @@ export function App() {
       id,
       ...def,
     }));
-    const name = playerName || account?.handle || "Adventurer";
+    const name = playerName || account?.handle || "";
 
     return (
       <CharacterCreate
@@ -300,7 +306,7 @@ export function App() {
     );
   }
 
-  return <GameView client={client} name={playerName || account?.handle || "Adventurer"} />;
+  return <GameView client={client} name={playerName || account?.handle || ""} />;
 }
 
 // -- Game View --
