@@ -4,6 +4,7 @@ import {
   computeDerivedStats,
   buildAttributes,
   profileToState,
+  withDefaultFormulas,
 } from "./character.ts";
 import type { GameSystem } from "./character.ts";
 import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
@@ -179,5 +180,59 @@ describe("profileToState", () => {
     expect(state.race).toBe("human");
     expect(state.level).toBe(1);
     expect(state.attributes.str).toBe(14);
+  });
+});
+
+describe("withDefaultFormulas", () => {
+  const attributes = { str: 14, dex: 12, con: 13, int: 10, wis: 10, cha: 12 };
+
+  test("fills missing maxHp/maxMp/maxAp with reference-system defaults", () => {
+    const formulas = withDefaultFormulas({});
+    const derived = computeDerivedStats(formulas, 1, attributes);
+
+    expect(derived.maxHp).toBe(26); // 20 + 0 + floor(13 / 2)
+    expect(derived.maxMp).toBe(13); // 10 + 0 + floor(10 / 3)
+    expect(derived.maxAp).toBe(4); // 4 + floor((12 - 10) / 4)
+  });
+
+  test("defaults match the shipped reference system at higher levels", () => {
+    const formulas = withDefaultFormulas({});
+    const derived = computeDerivedStats(formulas, 3, attributes);
+
+    expect(derived.maxHp).toBe(42); // 20 + 2 * 8 + floor(13 / 2)
+    expect(derived.maxMp).toBe(21); // 10 + 2 * 4 + floor(10 / 3)
+  });
+
+  test("provided formulas win over defaults", () => {
+    const formulas = withDefaultFormulas({
+      maxHp: { name: "Max HP", expression: "100", min: 1 },
+    });
+    const derived = computeDerivedStats(formulas, 1, attributes);
+
+    expect(derived.maxHp).toBe(100);
+    expect(derived.maxMp).toBe(13); // default still fills the gap
+  });
+
+  test("preserves unrelated formulas", () => {
+    const formulas = withDefaultFormulas({
+      carryWeight: { name: "Carry Weight", expression: "50 + str * 5", min: 10 },
+    });
+
+    expect(formulas.carryWeight).toBeDefined();
+    expect(formulas.maxHp).toBeDefined();
+    expect(formulas.maxMp).toBeDefined();
+    expect(formulas.maxAp).toBeDefined();
+  });
+
+  test("does not mutate its input", () => {
+    const input: Record<string, FormulaDef> = {};
+    withDefaultFormulas(input);
+    expect(Object.keys(input)).toHaveLength(0);
+  });
+
+  test("respects the maxAp cap from the default formula", () => {
+    const formulas = withDefaultFormulas({});
+    const derived = computeDerivedStats(formulas, 1, { ...attributes, dex: 100 });
+    expect(derived.maxAp).toBe(12); // capped by max: 12
   });
 });

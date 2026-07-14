@@ -1,7 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { CharacterSession } from "./character-session.js";
-import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
+import type { CharacterProfile, FormulaDef, ItemDefinition } from "@realms/lexicons";
 import type { ItemInstance } from "@realms/common";
+
+const SWORD_DEF: ItemDefinition = {
+  name: "Iron Sword",
+  type: "weapon",
+  description: "A sword.",
+  stackable: false,
+  maxStack: 1,
+};
+
+const POTION_DEF: ItemDefinition = {
+  name: "Health Potion",
+  type: "consumable",
+  description: "Heals.",
+  stackable: true,
+  maxStack: 10,
+};
 
 const FORMULAS: Record<string, FormulaDef> = {
   maxHp: { name: "Max HP", expression: "20 + (level - 1) * 8 + floor(con / 2)", min: 1 },
@@ -22,13 +38,16 @@ function makeProfile(overrides: Partial<CharacterProfile> = {}): CharacterProfil
   };
 }
 
-function makeSession(profileOverrides: Partial<CharacterProfile> = {}): CharacterSession {
+function makeSession(
+  profileOverrides: Partial<CharacterProfile> = {},
+  formulas: Record<string, FormulaDef> = FORMULAS,
+): CharacterSession {
   return new CharacterSession(
     "session-1",
     "did:plc:test",
     makeProfile(profileOverrides),
     "test-area:spawn",
-    FORMULAS,
+    formulas,
   );
 }
 
@@ -64,12 +83,28 @@ describe("CharacterSession", () => {
       expect(session.isConnected).toBe(false);
       expect(session.isDead).toBe(false);
     });
+
+    test("missing derived-stat formulas are normalized to defaults", () => {
+      const session = makeSession({}, {});
+      // Defaults match the reference system.yml (con 13, int 10, dex 12, level 1)
+      expect(session.state.maxHp).toBe(26); // 20 + 0 + floor(13 / 2)
+      expect(session.state.maxMp).toBe(13); // 10 + 0 + floor(10 / 3)
+      expect(session.state.maxAp).toBe(4); // 4 + floor((12 - 10) / 4)
+      expect(session.state.currentHp).toBe(26);
+    });
+
+    test("partial formulas keep provided entries and default the rest", () => {
+      const session = makeSession({}, { maxHp: { name: "Max HP", expression: "100", min: 1 } });
+      expect(session.state.maxHp).toBe(100);
+      expect(session.state.maxMp).toBe(13); // default
+      expect(session.state.maxAp).toBe(4); // default
+    });
   });
 
   describe("inventory", () => {
     test("add and find items", () => {
       const session = makeSession();
-      session.addItem(makeItem());
+      session.addItem(makeItem(), SWORD_DEF);
 
       expect(session.findItem("Iron Sword")).toBeDefined();
       expect(session.findItem("sword")).toBeDefined();
@@ -77,10 +112,19 @@ describe("CharacterSession", () => {
       expect(session.findItem("missing")).toBeUndefined();
     });
 
-    test("stacks items with same definitionId", () => {
+    test("non-stackable items never merge", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 2 }));
-      session.addItem(makeItem({ instanceId: "item-2", quantity: 3 }));
+      session.addItem(makeItem(), SWORD_DEF);
+      session.addItem(makeItem({ instanceId: "item-2" }), SWORD_DEF);
+
+      expect(session.inventory).toHaveLength(2);
+    });
+
+    test("stackable items merge by definitionId up to maxStack", () => {
+      const session = makeSession();
+      const potion = makeItem({ definitionId: "area:potion", name: "Health Potion" });
+      session.addItem({ ...potion, quantity: 2 }, POTION_DEF);
+      session.addItem({ ...potion, instanceId: "item-2", quantity: 3 }, POTION_DEF);
 
       expect(session.inventory).toHaveLength(1);
       expect(session.inventory[0].quantity).toBe(5);
@@ -88,20 +132,24 @@ describe("CharacterSession", () => {
 
     test("removeItem removes full stack", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 3 }));
+      session.addItem(makeItem({ quantity: 3 }), SWORD_DEF);
 
       const removed = session.removeItem("Iron Sword", 5);
       expect(removed?.quantity).toBe(3);
       expect(session.inventory).toHaveLength(0);
     });
 
-    test("removeItem removes partial stack", () => {
+    test("removeItem partial stack mints a fresh instance with independent properties", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 5 }));
+      session.addItem(makeItem({ quantity: 5, properties: { charges: 2 } }), SWORD_DEF);
 
       const removed = session.removeItem("Iron Sword", 2);
       expect(removed?.quantity).toBe(2);
       expect(session.inventory[0].quantity).toBe(3);
+      expect(removed?.instanceId).not.toBe("item-1");
+
+      (removed!.properties as { charges: number }).charges = 99;
+      expect(session.inventory[0].properties).toEqual({ charges: 2 });
     });
 
     test("removeItem returns undefined for missing items", () => {
@@ -112,13 +160,13 @@ describe("CharacterSession", () => {
     test("countItem returns quantity by definitionId", () => {
       const session = makeSession();
       expect(session.countItem("area:sword")).toBe(0);
-      session.addItem(makeItem({ quantity: 7 }));
+      session.addItem(makeItem({ quantity: 7 }), SWORD_DEF);
       expect(session.countItem("area:sword")).toBe(7);
     });
 
     test("removeItemByDefId removes by definitionId", () => {
       const session = makeSession();
-      session.addItem(makeItem({ quantity: 5 }));
+      session.addItem(makeItem({ quantity: 5 }), SWORD_DEF);
 
       expect(session.removeItemByDefId("area:sword", 3)).toBe(true);
       expect(session.inventory[0].quantity).toBe(2);
@@ -154,6 +202,59 @@ describe("CharacterSession", () => {
       );
       expect(replaced?.name).toBe("Old Sword");
       expect(session.getEquipped("mainHand")?.name).toBe("New Sword");
+    });
+
+    test("equip/unequip does not compound bonuses when formulas are missing", () => {
+      const session = makeSession({}, {});
+      const hpBefore = session.state.maxHp;
+      const ring = makeItem({
+        instanceId: "ring-1",
+        name: "Ring of Vitality",
+        properties: { bonus_hp: 10 },
+      });
+
+      session.equip("ring", ring);
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      session.unequip("ring");
+      expect(session.state.maxHp).toBe(hpBefore);
+
+      session.equip("ring", ring);
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      session.unequip("ring");
+      expect(session.state.maxHp).toBe(hpBefore);
+    });
+
+    test("repeated recalculation while equipped is idempotent", () => {
+      const session = makeSession({}, {});
+      const hpBefore = session.state.maxHp;
+
+      session.equip(
+        "ring",
+        makeItem({
+          instanceId: "ring-1",
+          name: "Ring of Vitality",
+          properties: { bonus_hp: 10 },
+        }),
+      );
+      expect(session.state.maxHp).toBe(hpBefore + 10);
+
+      // Effect expiry triggers recalculateDerived (same path as tickEffects in play)
+      for (let i = 0; i < 3; i++) {
+        session.state.activeEffects = [
+          {
+            id: `fx-${i}`,
+            name: "Blink",
+            type: "buff",
+            attribute: "wis",
+            magnitude: 0,
+            remainingTicks: 1,
+          },
+        ];
+        session.tickEffects();
+        expect(session.state.maxHp).toBe(hpBefore + 10);
+      }
     });
 
     test("equipment bonuses affect derived stats", () => {

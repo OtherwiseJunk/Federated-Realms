@@ -11,8 +11,10 @@ function makeQuest(overrides: Partial<QuestDefinition> = {}): QuestDefinition {
     giver: "npc-elder",
     objectives: [{ type: "kill", target: "goblin", description: "Kill 3 goblins", count: 3 }],
     ordered: true,
+    consumeItems: true,
+    repeatable: false,
     ...overrides,
-  } as QuestDefinition;
+  };
 }
 
 describe("QuestManager", () => {
@@ -126,7 +128,7 @@ describe("QuestManager", () => {
             { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
             { type: "talk", target: "npc-elder", description: "Report back", count: 1 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -153,7 +155,7 @@ describe("QuestManager", () => {
           objectives: [
             { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -177,7 +179,7 @@ describe("QuestManager", () => {
           objectives: [
             { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -194,7 +196,7 @@ describe("QuestManager", () => {
           objectives: [
             { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
           ],
-        } as any),
+        }),
       );
 
       qm.acceptQuest(PLAYER, "q1", (itemDefId) => (itemDefId === "herb" ? 2 : 0));
@@ -209,7 +211,7 @@ describe("QuestManager", () => {
           objectives: [
             { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
       qm.recordCollect(PLAYER, "herb", 2);
@@ -234,7 +236,7 @@ describe("QuestManager", () => {
             { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
             { type: "talk", target: "npc-elder", description: "Report back", count: 1 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
       const consumed: Array<[string, number]> = [];
@@ -253,7 +255,7 @@ describe("QuestManager", () => {
           objectives: [
             { type: "collect", target: "herb", description: "Collect 2 herbs", count: 2 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
       const consumed: Array<[string, number]> = [];
@@ -272,7 +274,7 @@ describe("QuestManager", () => {
             { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
             { type: "collect", target: "herb", description: "Collect 5 herbs", count: 5 },
           ],
-        } as any),
+        }),
       );
 
       qm.acceptQuest(PLAYER, "q1", () => 5);
@@ -290,7 +292,7 @@ describe("QuestManager", () => {
             { type: "collect", target: "blue-cap", description: "5 blue caps", count: 5 },
             { type: "collect", target: "green-cap", description: "5 green caps", count: 5 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -311,7 +313,7 @@ describe("QuestManager", () => {
             { type: "kill", target: "goblin", description: "Kill 2 goblins", count: 2 },
             { type: "kill", description: "Kill 3 of anything", count: 3 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -330,7 +332,7 @@ describe("QuestManager", () => {
             { type: "kill", target: "goblin", description: "Kill 1 goblin", count: 1 },
             { type: "kill", description: "Kill 3 of anything", count: 3 },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -351,13 +353,105 @@ describe("QuestManager", () => {
             { type: "collect", target: "red-cap", description: "5 red caps", count: 5 },
             { type: "collect", target: "blue-cap", description: "5 blue caps", count: 5 },
           ],
-        } as any),
+        }),
       );
 
       qm.acceptQuest(PLAYER, "q1", (itemDefId) => (itemDefId === "blue-cap" ? 5 : 0));
       const progress = qm.getProgress(PLAYER, "q1")!;
       expect(progress.objectives[1].current).toBe(0);
       expect(progress.objectives[2].done).toBe(true);
+    });
+
+    test("ordered quest syncs a newly unlocked collect objective from inventory", () => {
+      const qm = new QuestManager();
+      // Player holds 5 hides the whole time
+      qm.setInventoryLookup((_did, itemDefId) => (itemDefId === "hide" ? 5 : 0));
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1", () => 5);
+
+      // Collect is locked behind the kill, so accepting credits nothing
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
+
+      const updated = qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[0].done).toBe(true);
+      expect(prog.objectives[1].current).toBe(5);
+      expect(prog.objectives[1].done).toBe(true);
+      expect(updated).toEqual(["q1"]);
+    });
+
+    test("ordered quest cascades sync through consecutive collect objectives", () => {
+      const qm = new QuestManager();
+      qm.setInventoryLookup((_did, itemDefId) =>
+        itemDefId === "hide" ? 5 : itemDefId === "pelt" ? 3 : 0,
+      );
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+            { type: "collect", target: "pelt", description: "Collect 3 pelts", count: 3 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[1].done).toBe(true);
+      expect(prog.objectives[2].done).toBe(true);
+    });
+
+    test("without an inventory lookup, unlocked collect objectives are not synced", () => {
+      const qm = new QuestManager();
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          objectives: [
+            { type: "kill", target: "boss", description: "Kill the boss", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      qm.acceptQuest(PLAYER, "q1");
+
+      qm.recordKill(PLAYER, "boss");
+      const prog = qm.getProgress(PLAYER, "q1")!;
+      expect(prog.objectives[0].done).toBe(true);
+      expect(prog.objectives[1].current).toBe(0);
+      expect(prog.objectives[1].done).toBe(false);
+    });
+
+    test("unordered quests do not re-sync collect objectives on unlock", () => {
+      const qm = new QuestManager();
+      // Registered lookup reports 5 hides on hand
+      qm.setInventoryLookup(() => 5);
+      qm.registerDefinition(
+        "q1",
+        makeQuest({
+          ordered: false,
+          objectives: [
+            { type: "kill", target: "goblin", description: "Kill goblin", count: 1 },
+            { type: "collect", target: "hide", description: "Collect 5 hides", count: 5 },
+          ],
+        }),
+      );
+      // Accept with an empty inventory so the accept-time sync credits nothing
+      qm.acceptQuest(PLAYER, "q1", () => 0);
+
+      qm.recordKill(PLAYER, "goblin");
+      // Unordered collect objectives only advance on collect events, never via
+      // a kill-triggered re-sync
+      expect(qm.getProgress(PLAYER, "q1")!.objectives[1].current).toBe(0);
     });
 
     test("recordVisit tracks room visits", () => {
@@ -373,7 +467,7 @@ describe("QuestManager", () => {
               count: 1,
             },
           ],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -476,7 +570,7 @@ describe("QuestManager", () => {
         "q1",
         makeQuest({
           objectives: [{ type: "kill", target: "goblin", description: "Kill goblin", count: 1 }],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
 
@@ -497,7 +591,7 @@ describe("QuestManager", () => {
           giver: "npc-elder",
           turnIn: "npc-blacksmith",
           objectives: [{ type: "kill", target: "goblin", description: "Kill goblin", count: 1 }],
-        } as any),
+        }),
       );
       qm.acceptQuest(PLAYER, "q1");
       qm.recordKill(PLAYER, "goblin");

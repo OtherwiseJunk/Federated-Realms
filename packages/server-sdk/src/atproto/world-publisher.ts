@@ -51,8 +51,8 @@ export class WorldPublisher {
         value: item.value,
         rarity: item.rarity,
         levelRequired: item.levelRequired,
-        stackable: item.stackable,
-        maxStack: item.maxStack,
+        stackable: item.stackable ? true : undefined,
+        maxStack: item.maxStack === (item.stackable ? 99 : 1) ? undefined : item.maxStack,
         properties: item.properties,
         tags: item.tags?.length ? item.tags : undefined,
       });
@@ -86,11 +86,12 @@ export class WorldPublisher {
           type: o.type,
           description: o.description,
           target: o.target,
-          count: o.count,
+          count: o.count === 1 ? undefined : o.count,
         })),
         ordered: quest.ordered ? undefined : false,
         rewards: quest.rewards,
-        repeatable: quest.repeatable,
+        repeatable: quest.repeatable ? true : undefined,
+        consumeItems: quest.consumeItems ? undefined : false,
         tags: quest.tags?.length ? quest.tags : undefined,
       });
       stats.quests++;

@@ -44,6 +44,12 @@ const commandLimiter = new RateLimiter(30, 1_000); // 30 commands per second per
 const MAX_WS_MESSAGE_SIZE = 4096; // 4KB max WebSocket message
 const world = new WorldManager(config);
 const sessions = new SessionManager();
+
+// Let quest tracking read live inventory so collect objectives unlocked
+// mid-quest (e.g. after a kill) credit items already on hand.
+world.questManager.setInventoryLookup(
+  (characterDid, itemDefId) => sessions.getSessionByDid(characterDid)?.countItem(itemDefId) ?? 0,
+);
 const bluesky = new BlueskyBridge(config.bluesky);
 const serverIdentity = new ServerIdentity();
 const oauthClient = new GameOAuthClient();
@@ -78,7 +84,7 @@ setInterval(() => {
 
 let federation: FederationManager | null = null;
 let chatRelay: ChatRelayService | null = null;
-const portalHandler = new PortalHandler(serverIdentity, pdsClient, config.federation);
+const portalHandler = new PortalHandler(serverIdentity);
 const transferHandler = new TransferHandler(
   serverIdentity,
   sessions,
@@ -129,6 +135,7 @@ if (!DEV_MODE) {
       await federation.publishRegistration(portalCount, 0);
       await federation.seedFromConfig();
       transferHandler.setFederationManager(federation);
+      portalHandler.setFederationManager(federation);
 
       // Cross-server chat relay
       chatRelay = new ChatRelayService(serverIdentity, federation, sessions);
@@ -362,6 +369,24 @@ setInterval(() => {
     session.attestations.flush();
   }
 }, ATTESTATION_FLUSH_MS);
+
+// ── Periodic Federation Player Count Refresh ──
+// Keep the published registration record's playerCount fresh so discovery data
+// doesn't go stale after boot. Only writes when the count changed since the
+// last publish, to avoid hammering the PDS.
+const FEDERATION_REFRESH_MS = 5 * 60 * 1000;
+
+setInterval(() => {
+  if (!federation) return;
+  const count = sessions.getOnlineCount();
+  if (count === federation.publishedPlayerCount) return;
+  federation.updatePlayerCount(count).catch((err) => {
+    console.warn(
+      "   Failed to refresh federation player count:",
+      err instanceof Error ? err.message : err,
+    );
+  });
+}, FEDERATION_REFRESH_MS);
 
 // ── Idle Session Cleanup ──
 // Disconnect sessions idle for 30+ minutes

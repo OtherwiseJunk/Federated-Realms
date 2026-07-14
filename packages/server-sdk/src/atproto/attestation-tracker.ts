@@ -11,7 +11,11 @@ export class AttestationTracker {
   ) {}
 
   private get canSign(): boolean {
-    return !!this.serverIdentity.did;
+    // Need both an identity to attribute the attestation to and a live signing
+    // key to actually sign it. A server whose signing key failed to initialize
+    // has a did but canSign === false, so flush stays a no-op instead of
+    // throwing on every attempt.
+    return !!this.serverIdentity.did && this.serverIdentity.canSign;
   }
 
   recordLevelUp(level: number, xp: number): void {

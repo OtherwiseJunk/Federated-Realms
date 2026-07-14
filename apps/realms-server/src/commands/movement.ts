@@ -39,11 +39,25 @@ export function handleMovement(cmd: ParsedCommand, ctx: CommandContext): void {
     return;
   }
 
-  // Portal exit — hand off to federation portal handler
+  // Portal exit — hand off to federation portal handler. traverse handles its
+  // own failures narratively; the catch here is a backstop so this fire-and-
+  // forget call can never surface as an unhandled rejection.
   if (exit.portal && ctx.portalHandler) {
-    ctx.portalHandler.traverse(session, exit, (text, style) => {
-      sendNarrative(session, text, (style as "info" | "error" | "system") ?? "info");
-    });
+    ctx.portalHandler
+      .traverse(session, exit, (text, style) => {
+        sendNarrative(session, text, (style as "info" | "error" | "system") ?? "info");
+      })
+      .catch((err) => {
+        sendNarrative(
+          session,
+          "The portal flickers and dies. The destination realm is unreachable.",
+          "error",
+        );
+        console.warn(
+          `   Portal traversal failed for ${session.name}:`,
+          err instanceof Error ? err.message : err,
+        );
+      });
     return;
   }
 

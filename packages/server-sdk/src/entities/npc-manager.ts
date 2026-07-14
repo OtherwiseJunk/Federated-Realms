@@ -133,14 +133,18 @@ export class NpcManager {
       const roll = Math.random() * 100;
       if (roll < entry.chance) {
         const itemDef = getItemDef(entry.itemId);
-        if (itemDef) {
-          const qty =
-            entry.minQuantity && entry.maxQuantity
-              ? Math.floor(Math.random() * (entry.maxQuantity - entry.minQuantity + 1)) +
-                entry.minQuantity
-              : (entry.minQuantity ?? 1);
-          drops.push(createItemInstance(entry.itemId, itemDef, qty));
+        if (!itemDef) {
+          console.warn(
+            `NPC '${definitionId}' loot references unknown item definition: ${entry.itemId}`,
+          );
+          continue;
         }
+        const qty =
+          entry.minQuantity && entry.maxQuantity
+            ? Math.floor(Math.random() * (entry.maxQuantity - entry.minQuantity + 1)) +
+              entry.minQuantity
+            : (entry.minQuantity ?? 1);
+        drops.push(createItemInstance(entry.itemId, itemDef, qty));
       }
     }
 

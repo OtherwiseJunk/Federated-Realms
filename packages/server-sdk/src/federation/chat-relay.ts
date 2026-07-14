@@ -4,6 +4,7 @@ import type { SessionManager } from "../server/session-manager.js";
 import type { CharacterSession } from "../entities/character-session.js";
 import { NSID } from "@realms/lexicons";
 import { encodeMessage } from "@realms/protocol";
+import { xrpcUrl } from "../atproto/xrpc.js";
 
 interface RelayResult {
   delivered: boolean;
@@ -154,7 +155,7 @@ export class ChatRelayService {
   }
 
   private async locatePlayer(server: KnownServer, name: string): Promise<LocateResult> {
-    const url = `${server.xrpcEndpoint}/com.cacheblasters.realms.chat.locatePlayer?name=${encodeURIComponent(name)}`;
+    const url = xrpcUrl(server.xrpcEndpoint!, NSID.ChatLocatePlayer, { name });
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return { found: false, serverEndpoint: server.xrpcEndpoint! };
     const data = (await res.json()) as {
@@ -175,7 +176,7 @@ export class ChatRelayService {
     message: string,
   ): Promise<boolean> {
     try {
-      const res = await fetch(`${xrpcEndpoint}/com.cacheblasters.realms.chat.relay`, {
+      const res = await fetch(xrpcUrl(xrpcEndpoint, NSID.ChatRelay), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

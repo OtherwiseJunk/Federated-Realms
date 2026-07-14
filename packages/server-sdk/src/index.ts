@@ -37,6 +37,16 @@ export { AuthTokenStore } from "./atproto/auth-token-store.js";
 
 export { WorldPublisher } from "./atproto/world-publisher.js";
 
+export {
+  normalizeXrpcEndpoint,
+  xrpcUrl,
+  resolveDidDocument,
+  resolvePdsEndpoint,
+  fetchRecord,
+  type DidDocument,
+  type DidDocumentService,
+} from "./atproto/xrpc.js";
+
 // ── World Management ──
 export { Room } from "./world/room.js";
 export { loadGameSystem } from "./world/system-loader.js";

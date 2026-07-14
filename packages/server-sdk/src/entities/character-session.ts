@@ -1,6 +1,12 @@
-import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
+import type { CharacterProfile, FormulaDef, ItemDefinition } from "@realms/lexicons";
 import type { CharacterState, ItemInstance } from "@realms/common";
-import { profileToState, computeDerivedStats } from "@realms/common";
+import {
+  profileToState,
+  computeDerivedStats,
+  withDefaultFormulas,
+  addItemToStacks,
+  splitItemStack,
+} from "@realms/common";
 import type { ServerWebSocket } from "bun";
 import { AttestationTracker } from "../atproto/attestation-tracker.js";
 import type { ServerIdentity } from "../atproto/server-identity.js";
@@ -33,8 +39,13 @@ export class CharacterSession {
   ) {
     this.sessionId = sessionId;
     this.characterDid = characterDid;
-    this.state = profileToState(profile, spawnRoom, formulas);
-    this.formulas = formulas;
+    // Normalize at the class boundary: SDK consumers (and tests) may construct a
+    // session with partial or empty formulas. Guaranteeing every core derived
+    // stat here keeps recalculateDerived idempotent — no current-value fallbacks
+    // that would compound equipment bonuses (issue #81).
+    const resolvedFormulas = withDefaultFormulas(formulas);
+    this.state = profileToState(profile, spawnRoom, resolvedFormulas);
+    this.formulas = resolvedFormulas;
     this.visitedRooms.add(spawnRoom);
     this.attestations = new AttestationTracker(
       serverIdentity ?? ({ did: "" } as ServerIdentity),
@@ -68,13 +79,8 @@ export class CharacterSession {
     }
   }
 
-  addItem(item: ItemInstance): void {
-    const existing = this.state.inventory.find((i) => i.definitionId === item.definitionId);
-    if (existing) {
-      existing.quantity += item.quantity;
-    } else {
-      this.state.inventory.push({ ...item });
-    }
+  addItem(item: ItemInstance, definition: ItemDefinition | undefined): void {
+    addItemToStacks(this.state.inventory, item, definition);
   }
 
   removeItem(identifier: string, quantity: number = 1): ItemInstance | undefined {
@@ -90,14 +96,7 @@ export class CharacterSession {
       return item;
     }
 
-    item.quantity -= quantity;
-    return {
-      instanceId: item.instanceId,
-      definitionId: item.definitionId,
-      name: item.name,
-      quantity,
-      properties: item.properties,
-    };
+    return splitItemStack(item, quantity);
   }
 
   findItem(identifier: string): ItemInstance | undefined {
@@ -217,11 +216,16 @@ export class CharacterSession {
   }
 
   private recalculateDerived(): void {
+    // formulas are normalized in the constructor to always define every core
+    // derived stat, so `derived` carries a bonus-free base for each. Adding the
+    // equipment bonus to that base (never to the already-mutated current max)
+    // makes this idempotent: repeated calls and equip/unequip cycles do not
+    // compound bonuses (issue #81).
     const derived = computeDerivedStats(this.formulas, this.state.level, this.state.attributes);
     const bonuses = this.getEquipmentBonuses();
-    this.state.maxHp = (derived.maxHp ?? this.state.maxHp) + (bonuses.hp ?? 0);
-    this.state.maxMp = (derived.maxMp ?? this.state.maxMp) + (bonuses.mp ?? 0);
-    this.state.maxAp = (derived.maxAp ?? this.state.maxAp) + (bonuses.ap ?? 0);
+    this.state.maxHp = derived.maxHp + bonuses.hp;
+    this.state.maxMp = derived.maxMp + bonuses.mp;
+    this.state.maxAp = derived.maxAp + bonuses.ap;
     this.state.currentHp = Math.min(this.state.currentHp, this.state.maxHp);
     this.state.currentMp = Math.min(this.state.currentMp, this.state.maxMp);
   }
