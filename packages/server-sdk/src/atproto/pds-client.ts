@@ -38,6 +38,14 @@ export class PdsClient {
     });
   }
 
+  async deleteCharacter(playerAgent: AnyAgent, did: string): Promise<void> {
+    await playerAgent.com.atproto.repo.deleteRecord({
+      repo: did,
+      collection: NSID.CharacterProfile,
+      rkey: "self",
+    });
+  }
+
   async saveQuestProgress(
     playerAgent: AnyAgent,
     did: string,

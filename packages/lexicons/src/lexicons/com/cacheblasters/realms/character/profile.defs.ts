@@ -11,6 +11,10 @@ export { $nsid };
 /** A player's character profile in Federated Realms. Attributes are an open map — each server defines what attributes it uses via system.attribute records. */
 type Main = {
   $type: "com.cacheblasters.realms.character.profile";
+
+  /**
+   * Player-chosen cosmetic display name. Not used for addressing.
+   */
   name: string;
 
   /**
@@ -56,7 +60,7 @@ const main = l.record<"literal:self", Main>(
   "literal:self",
   $nsid,
   l.object({
-    name: l.string({ maxLength: 64 }),
+    name: l.string({ minLength: 1, maxLength: 64, maxGraphemes: 64 }),
     class: l.string(),
     race: l.string(),
     level: l.integer({ minimum: 1, maximum: 9999 }),

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import { validateCharacterName } from "@realms/common";
 
 interface ClassInfo {
   id: string;
@@ -22,25 +23,41 @@ interface Props {
   classes: ClassInfo[];
   races: RaceInfo[];
   playerName: string;
-  onComplete: (classId: string, raceId: string) => void;
+  onComplete: (name: string, classId: string, raceId: string) => void;
 }
 
-type Phase = "class" | "race" | "confirm";
+type Phase = "name" | "class" | "race" | "confirm";
 
 export function CharacterCreate({ classes, races, playerName, onComplete }: Props) {
-  const [phase, setPhase] = useState<Phase>("class");
+  const [phase, setPhase] = useState<Phase>("name");
+  const [name, setName] = useState(playerName);
   const [classIndex, setClassIndex] = useState(0);
   const [raceIndex, setRaceIndex] = useState(0);
   const [selectedClass, setSelectedClass] = useState<ClassInfo | null>(null);
 
-  useInput((_input, key) => {
-    if (phase === "class") {
+  const nameCheck = validateCharacterName(name);
+
+  useInput((input, key) => {
+    if (phase === "name") {
+      if (key.return) {
+        if (nameCheck.ok) setPhase("class");
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setName((prev) => prev.slice(0, -1));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setName((prev) => prev + input);
+      }
+    } else if (phase === "class") {
       if (key.upArrow) setClassIndex((i) => Math.max(0, i - 1));
       if (key.downArrow) setClassIndex((i) => Math.min(classes.length - 1, i + 1));
       if (key.return) {
         setSelectedClass(classes[classIndex]);
         setPhase("race");
       }
+      if (key.escape) setPhase("name");
     } else if (phase === "race") {
       if (key.upArrow) setRaceIndex((i) => Math.max(0, i - 1));
       if (key.downArrow) setRaceIndex((i) => Math.min(races.length - 1, i + 1));
@@ -50,7 +67,11 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
       }
     } else if (phase === "confirm") {
       if (key.return) {
-        onComplete(classes[classIndex].id, races[raceIndex].id);
+        onComplete(
+          nameCheck.ok ? nameCheck.name : name,
+          classes[classIndex].id,
+          races[raceIndex].id,
+        );
       }
       if (key.escape) setPhase("race");
     }
@@ -67,9 +88,19 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
       <Box marginTop={1}>
         <Text color="gray">Name: </Text>
         <Text color="green" bold>
-          {playerName}
+          {name}
         </Text>
+        {phase === "name" && <Text color="gray">{"█"}</Text>}
       </Box>
+
+      {phase === "name" && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="gray" dimColor>
+            {"(Type your character's name, Enter to confirm)"}
+          </Text>
+          {!nameCheck.ok && <Text color="red">{nameCheck.error}</Text>}
+        </Box>
+      )}
 
       {phase === "class" && <ClassSelect classes={classes} index={classIndex} />}
 
@@ -78,7 +109,7 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
       )}
 
       {phase === "confirm" && (
-        <ConfirmScreen playerName={playerName} cls={classes[classIndex]} race={races[raceIndex]} />
+        <ConfirmScreen playerName={name} cls={classes[classIndex]} race={races[raceIndex]} />
       )}
     </Box>
   );
