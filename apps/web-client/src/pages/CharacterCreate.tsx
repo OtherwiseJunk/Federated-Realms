@@ -107,7 +107,6 @@ export function CharacterCreate({ classes, races, playerName, onComplete }: Prop
           <input
             className="page-input"
             value={name}
-            maxLength={64}
             onChange={(e) => setName(e.target.value)}
             aria-label="Character name"
           />

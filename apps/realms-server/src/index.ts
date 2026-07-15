@@ -753,7 +753,11 @@ const server = Bun.serve<SessionData>({
           }
 
           // Build character profile using this server's game system
-          const profile = buildCharacterProfile(validated.name, body.classId, body.raceId);
+          const profile = buildCharacterProfile(
+            validated.name,
+            validated.classId,
+            validated.raceId,
+          );
 
           // Write to player's PDS
           await pdsClient.saveCharacter(agent, did, profile);
