@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { Box, Text, useApp, useStdout, useInput } from "ink";
+import { handleLocalPart } from "@realms/common";
 import { WsClient } from "../connection/ws-client.js";
 import { useGameState } from "../hooks/use-game-state.js";
 import { StatusBar } from "./StatusBar.js";
@@ -151,6 +152,7 @@ export function App() {
         setPhase("play");
       } else if (result.needsCharacter) {
         // New player — needs character creation
+        if (result.handle) setPlayerName(handleLocalPart(result.handle));
         if (result.gameSystem) {
           setSystem(result.gameSystem as SystemData);
         } else {
@@ -166,11 +168,15 @@ export function App() {
     [account, serverUrl],
   );
 
-  const handleCreateComplete = useCallback((chosenClass: string, chosenRace: string) => {
-    setFinalClass(chosenClass);
-    setFinalRace(chosenRace);
-    setPhase("play");
-  }, []);
+  const handleCreateComplete = useCallback(
+    (chosenName: string, chosenClass: string, chosenRace: string) => {
+      setPlayerName(chosenName);
+      setFinalClass(chosenClass);
+      setFinalRace(chosenRace);
+      setPhase("play");
+    },
+    [],
+  );
 
   // ── Connect when entering play phase ──
 
@@ -196,7 +202,7 @@ export function App() {
                 Authorization: `Bearer ${authToken}`,
               },
               body: JSON.stringify({
-                name: playerName || account.handle || "Adventurer",
+                name: playerName,
                 classId: finalClass,
                 raceId: finalRace,
               }),
@@ -216,7 +222,7 @@ export function App() {
         host: url.hostname,
         port: parseInt(url.port || (url.protocol === "https:" ? "443" : "80"), 10),
         tls: url.protocol === "https:",
-        name: playerName || `Adventurer_${Math.floor(Math.random() * 9999)}`,
+        name: playerName,
         classId: finalClass,
         raceId: finalRace,
       });
@@ -265,7 +271,7 @@ export function App() {
   if (phase === "create" && system) {
     const classList = Object.entries(system.classes).map(([id, def]) => ({ id, ...def }));
     const raceList = Object.entries(system.races).map(([id, def]) => ({ id, ...def }));
-    const name = playerName || account?.handle || "Adventurer";
+    const name = playerName || account?.handle || "";
 
     return (
       <CharacterCreate
@@ -285,9 +291,7 @@ export function App() {
     );
   }
 
-  return (
-    <GameView client={client} name={playerName || account?.handle || "Adventurer"} exit={exit} />
-  );
+  return <GameView client={client} name={playerName || account?.handle || ""} exit={exit} />;
 }
 
 // ── Game View (unchanged layout logic) ──

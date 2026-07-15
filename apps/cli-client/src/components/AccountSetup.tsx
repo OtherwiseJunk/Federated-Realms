@@ -57,7 +57,7 @@ export function AccountSetup({ onComplete }: Props) {
         } else if (selected.value === "signup") {
           onComplete({ mode: "signup", handle: "" });
         } else if (selected.value === "dev") {
-          onComplete({ mode: "dev", handle: `Adventurer_${Math.floor(Math.random() * 9999)}` });
+          onComplete({ mode: "dev", handle: `Player_${Math.floor(Math.random() * 9999)}` });
         }
       }
       return;
