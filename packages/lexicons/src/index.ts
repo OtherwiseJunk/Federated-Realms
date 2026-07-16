@@ -198,15 +198,18 @@ export type ItemDefinition = Omit<
 
 export type NpcBehavior = "hostile" | "merchant" | "questgiver" | "wanderer" | "static";
 
-export interface DialogueNode {
+// Object type aliases (not interfaces) so they carry an implicit index
+// signature and stay assignable to the lexicon's open `LexMap` dialogue field
+// when publishing records.
+export type DialogueNode = {
   text: string;
   responses?: DialogueResponse[];
-}
+};
 
-export interface DialogueResponse {
+export type DialogueResponse = {
   text: string;
   next?: string;
-}
+};
 
 export type NpcDefinition = Omit<
   _NpcDefinition,
