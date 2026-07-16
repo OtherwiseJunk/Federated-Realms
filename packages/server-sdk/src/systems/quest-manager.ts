@@ -1,4 +1,5 @@
 import type { QuestDefinition } from "@realms/lexicons";
+import type { QuestSnapshot } from "@realms/protocol";
 
 interface QuestObjectiveProgress {
   current: number;
@@ -308,8 +309,7 @@ export class QuestManager {
     const def = this.definitions.get(questId);
     if (!prog || !def) return null;
 
-    return {
-      type: "quest_update" as const,
+    const snapshot: QuestSnapshot = {
       questId,
       questName: def.name,
       status: prog.status,
@@ -319,6 +319,11 @@ export class QuestManager {
         required: obj.count,
         done: prog.objectives[i]?.done ?? false,
       })),
+    };
+
+    return {
+      type: "quest_update" as const,
+      ...snapshot,
       ...(includeRewards && def.rewards ? { rewards: def.rewards } : {}),
     };
   }
@@ -326,19 +331,18 @@ export class QuestManager {
   /** Build quest_log payload */
   buildLogPayload(characterDid: string) {
     const active = this.getActiveQuests(characterDid);
-    return {
-      type: "quest_log" as const,
-      quests: active.map(({ questId, def, progress }) => ({
-        questId,
-        questName: def.name,
-        status: progress.status,
-        objectives: def.objectives.map((obj, i) => ({
-          description: obj.description,
-          current: progress.objectives[i]?.current ?? 0,
-          required: obj.count,
-          done: progress.objectives[i]?.done ?? false,
-        })),
+    const quests: QuestSnapshot[] = active.map(({ questId, def, progress }) => ({
+      questId,
+      questName: def.name,
+      status: progress.status,
+      objectives: def.objectives.map((obj, i) => ({
+        description: obj.description,
+        current: progress.objectives[i]?.current ?? 0,
+        required: obj.count,
+        done: progress.objectives[i]?.done ?? false,
       })),
-    };
+    }));
+
+    return { type: "quest_log" as const, quests };
   }
 }

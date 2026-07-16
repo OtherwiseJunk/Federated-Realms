@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import type { ServerMessage, CombatantInfo, AdaptationRequired } from "@realms/protocol";
+import type {
+  ServerMessage,
+  CombatantInfo,
+  AdaptationRequired,
+  NarrativeStyle,
+  CharacterStatsPayload,
+  MapSnapshot,
+  QuestObjective,
+  QuestSnapshot,
+  PortalOffer,
+} from "@realms/protocol";
 import type { RoomState, ItemInstance } from "@realms/common";
 import type { WsClient } from "../connection/ws-client.js";
 
@@ -7,54 +17,25 @@ export type EquipmentMap = Record<string, ItemInstance>;
 
 export interface NarrativeLine {
   text: string;
-  style: "info" | "error" | "combat" | "system" | "chat" | "room";
+  // Protocol narrative styles plus a client-only "room" style.
+  style: NarrativeStyle | "room";
   timestamp: number;
 }
 
-export interface CharacterStats {
-  hp: number;
-  maxHp: number;
-  mp: number;
-  maxMp: number;
-  ap: number;
-  maxAp: number;
-  gold: number;
-  level: number;
-  xp: number;
-  xpToNext: number;
-}
-
-export interface QuestObjectiveEntry {
-  description: string;
-  current: number;
-  required: number;
-  done: boolean;
-}
-
-export interface QuestEntry {
-  questId: string;
-  questName: string;
-  status: "active" | "completed" | "failed";
-  objectives: QuestObjectiveEntry[];
-}
-
-export interface MapState {
-  grid: string[];
-  cursorRow: number;
-  cursorCol: number;
-  legend: string[];
-}
+// The payload shapes below are defined once in @realms/protocol and shared by
+// producers (server) and consumers (this hook). The aliases keep the public
+// names this hook has always exported while removing the duplicated field
+// declarations that used to drift from the protocol.
+export type CharacterStats = CharacterStatsPayload;
+export type QuestObjectiveEntry = QuestObjective;
+export type QuestEntry = QuestSnapshot;
+export type MapState = MapSnapshot;
+export type PortalOfferState = PortalOffer;
 
 export interface CombatState {
   active: boolean;
   combatants: CombatantInfo[];
   targetId: string;
-}
-
-export interface PortalOfferState {
-  targetServer: { name: string; did: string; endpoint: string };
-  sessionId: string;
-  websocketUrl: string;
 }
 
 export interface GameState {
@@ -162,35 +143,17 @@ export function useGameState(client: WsClient) {
           );
           break;
 
-        case "character_update":
-          setState((prev) => ({
-            ...prev,
-            stats: {
-              hp: msg.hp,
-              maxHp: msg.maxHp,
-              mp: msg.mp,
-              maxMp: msg.maxMp,
-              ap: msg.ap,
-              maxAp: msg.maxAp,
-              gold: msg.gold,
-              level: msg.level,
-              xp: msg.xp,
-              xpToNext: msg.xpToNext,
-            },
-          }));
+        case "character_update": {
+          const { type: _type, ...stats } = msg;
+          setState((prev) => ({ ...prev, stats }));
           break;
+        }
 
-        case "map_update":
-          setState((prev) => ({
-            ...prev,
-            map: {
-              grid: msg.grid,
-              cursorRow: msg.cursorRow,
-              cursorCol: msg.cursorCol,
-              legend: msg.legend,
-            },
-          }));
+        case "map_update": {
+          const { type: _type, ...map } = msg;
+          setState((prev) => ({ ...prev, map }));
           break;
+        }
 
         case "level_up":
           addNarrative(`Level up! You are now level ${msg.level}!`, "system");
@@ -272,28 +235,16 @@ export function useGameState(client: WsClient) {
         case "quest_log":
           setState((prev) => ({
             ...prev,
-            quests: msg.quests
-              .filter((q) => q.status === "active")
-              .map((q) => ({
-                questId: q.questId,
-                questName: q.questName,
-                status: q.status,
-                objectives: q.objectives,
-              })),
+            quests: msg.quests.filter((q) => q.status === "active"),
           }));
           break;
 
-        case "portal_offer":
-          setState((prev) => ({
-            ...prev,
-            portalOffer: {
-              targetServer: msg.targetServer,
-              sessionId: msg.sessionId,
-              websocketUrl: msg.websocketUrl,
-            },
-          }));
+        case "portal_offer": {
+          const { type: _type, ...portalOffer } = msg;
+          setState((prev) => ({ ...prev, portalOffer }));
           addNarrative(`The portal pulls you through to ${msg.targetServer.name}...`, "system");
           break;
+        }
 
         case "adaptation_required":
           setState((prev) => ({ ...prev, adaptation: msg.adaptation }));

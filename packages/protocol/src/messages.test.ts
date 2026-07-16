@@ -131,4 +131,150 @@ describe("decodeServerMessage", () => {
   test("returns null for invalid JSON", () => {
     expect(decodeServerMessage("broken")).toBeNull();
   });
+
+  test("returns null for non-object and missing/unknown type", () => {
+    expect(decodeServerMessage('"just a string"')).toBeNull();
+    expect(decodeServerMessage("42")).toBeNull();
+    expect(decodeServerMessage('{"sessionId":"abc"}')).toBeNull();
+    expect(decodeServerMessage('{"type":"totally_made_up"}')).toBeNull();
+  });
+
+  test("validates welcome fields", () => {
+    expect(decodeServerMessage('{"type":"welcome","sessionId":"a"}')).toBeNull();
+    expect(decodeServerMessage('{"type":"welcome","sessionId":5,"serverName":"T"}')).toBeNull();
+  });
+
+  test("narrative rejects non-string text or style", () => {
+    expect(decodeServerMessage('{"type":"narrative"}')).toBeNull();
+    expect(decodeServerMessage('{"type":"narrative","text":42}')).toBeNull();
+    expect(decodeServerMessage('{"type":"narrative","text":"hi","style":9}')).toBeNull();
+    // style is optional
+    expect(decodeServerMessage('{"type":"narrative","text":"hi"}')?.type).toBe("narrative");
+  });
+
+  test("decodes a full character_update and rejects a non-numeric field", () => {
+    const ok = decodeServerMessage(
+      '{"type":"character_update","hp":10,"maxHp":10,"mp":5,"maxMp":5,"ap":3,"maxAp":3,"gold":0,"level":1,"xp":0,"xpToNext":100}',
+    );
+    expect(ok?.type).toBe("character_update");
+    // missing xpToNext
+    expect(
+      decodeServerMessage(
+        '{"type":"character_update","hp":10,"maxHp":10,"mp":5,"maxMp":5,"ap":3,"maxAp":3,"gold":0,"level":1,"xp":0}',
+      ),
+    ).toBeNull();
+    // hp is a string
+    expect(
+      decodeServerMessage(
+        '{"type":"character_update","hp":"10","maxHp":10,"mp":5,"maxMp":5,"ap":3,"maxAp":3,"gold":0,"level":1,"xp":0,"xpToNext":100}',
+      ),
+    ).toBeNull();
+  });
+
+  test("map_update requires string-array grid/legend and numeric cursors", () => {
+    expect(
+      decodeServerMessage(
+        '{"type":"map_update","grid":["#"],"cursorRow":0,"cursorCol":0,"legend":["# wall"]}',
+      )?.type,
+    ).toBe("map_update");
+    expect(
+      decodeServerMessage(
+        '{"type":"map_update","grid":[1],"cursorRow":0,"cursorCol":0,"legend":[]}',
+      ),
+    ).toBeNull();
+    expect(
+      decodeServerMessage(
+        '{"type":"map_update","grid":["#"],"cursorRow":"0","cursorCol":0,"legend":[]}',
+      ),
+    ).toBeNull();
+  });
+
+  test("quest_update validates the nested objectives array", () => {
+    const ok = decodeServerMessage(
+      '{"type":"quest_update","questId":"q1","questName":"Q","status":"active","objectives":[{"description":"d","current":0,"required":1,"done":false}]}',
+    );
+    expect(ok?.type).toBe("quest_update");
+    // objective missing a field
+    expect(
+      decodeServerMessage(
+        '{"type":"quest_update","questId":"q1","questName":"Q","status":"active","objectives":[{"description":"d","current":0,"required":1}]}',
+      ),
+    ).toBeNull();
+    // bad status
+    expect(
+      decodeServerMessage(
+        '{"type":"quest_update","questId":"q1","questName":"Q","status":"weird","objectives":[]}',
+      ),
+    ).toBeNull();
+    // objectives not an array
+    expect(
+      decodeServerMessage(
+        '{"type":"quest_update","questId":"q1","questName":"Q","status":"active","objectives":{}}',
+      ),
+    ).toBeNull();
+  });
+
+  test("quest_log validates each snapshot in the array", () => {
+    expect(
+      decodeServerMessage(
+        '{"type":"quest_log","quests":[{"questId":"q","questName":"Q","status":"active","objectives":[]}]}',
+      )?.type,
+    ).toBe("quest_log");
+    expect(decodeServerMessage('{"type":"quest_log","quests":[{"questId":"q"}]}')).toBeNull();
+    expect(decodeServerMessage('{"type":"quest_log","quests":"nope"}')).toBeNull();
+  });
+
+  test("combat_update validates the combatants array", () => {
+    expect(
+      decodeServerMessage(
+        '{"type":"combat_update","targetId":"g","combatants":[{"id":"g","name":"Goblin","level":1,"hp":5,"maxHp":5}]}',
+      )?.type,
+    ).toBe("combat_update");
+    // combatant missing numeric hp
+    expect(
+      decodeServerMessage(
+        '{"type":"combat_update","targetId":"g","combatants":[{"id":"g","name":"Goblin","level":1,"maxHp":5}]}',
+      ),
+    ).toBeNull();
+  });
+
+  test("portal_offer requires targetServer.name and a websocketUrl", () => {
+    expect(
+      decodeServerMessage(
+        '{"type":"portal_offer","targetServer":{"name":"B","did":"did:x","endpoint":"e"},"sessionId":"s","websocketUrl":"ws://b/ws"}',
+      )?.type,
+    ).toBe("portal_offer");
+    // targetServer is not an object with a name
+    expect(
+      decodeServerMessage(
+        '{"type":"portal_offer","targetServer":"B","sessionId":"s","websocketUrl":"ws://b/ws"}',
+      ),
+    ).toBeNull();
+    // missing websocketUrl
+    expect(
+      decodeServerMessage(
+        '{"type":"portal_offer","targetServer":{"name":"B","did":"d","endpoint":"e"},"sessionId":"s"}',
+      ),
+    ).toBeNull();
+  });
+
+  test("mailbox validates each message so the state hook never dereferences a bad payload", () => {
+    expect(decodeServerMessage('{"type":"mailbox","messages":[]}')?.type).toBe("mailbox");
+    expect(
+      decodeServerMessage(
+        '{"type":"mailbox","messages":[{"senderName":"A","senderDid":"d","message":"hi","sourceServer":"s","sentAt":"t"}]}',
+      )?.type,
+    ).toBe("mailbox");
+    // messages is not an array
+    expect(decodeServerMessage('{"type":"mailbox","messages":{}}')).toBeNull();
+    // a message missing fields
+    expect(decodeServerMessage('{"type":"mailbox","messages":[{"senderName":"A"}]}')).toBeNull();
+  });
+
+  test("chat requires channel, sender and message", () => {
+    expect(
+      decodeServerMessage('{"type":"chat","channel":"shout","sender":"A","message":"hi"}')?.type,
+    ).toBe("chat");
+    expect(decodeServerMessage('{"type":"chat","channel":"shout","sender":"A"}')).toBeNull();
+  });
 });
