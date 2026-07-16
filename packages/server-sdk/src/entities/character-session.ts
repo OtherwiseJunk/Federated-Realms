@@ -250,7 +250,7 @@ export class CharacterSession {
       effect.remainingTicks--;
       if (effect.remainingTicks <= 0) {
         if (effect.attribute) {
-          const current = this.state.attributes[effect.attribute] ?? 10;
+          const current = this.state.attributes[effect.attribute];
           if (effect.type === "buff") {
             this.state.attributes[effect.attribute] = current - effect.magnitude;
           } else {

@@ -1,4 +1,4 @@
-import type { NpcDefinition, ItemDefinition } from "@realms/lexicons";
+import type { NpcDefinition, ItemDefinition, AttributeDef } from "@realms/lexicons";
 import type { NpcInstance, ItemInstance } from "@realms/common";
 import { createNpcInstance, createItemInstance } from "@realms/common";
 import type { Room } from "../world/room.js";
@@ -27,8 +27,17 @@ export class NpcManager {
   private goldDrops = new Map<string, GoldDrop>();
   private instances = new Map<string, NpcInstance>();
   private respawnQueue: RespawnEntry[] = [];
+  // System attribute definitions, used to fill each spawned NPC's attribute
+  // record with the configured defaults. Populated by WorldManager once the
+  // game system is loaded and before any NPC spawns.
+  private attributeDefs: Record<string, AttributeDef> = {};
 
   static RESPAWN_TIME_MS = 30_000;
+
+  /** Provide the system attribute definitions used to default NPC attributes at spawn. */
+  setAttributeDefs(attributeDefs: Record<string, AttributeDef>): void {
+    this.attributeDefs = attributeDefs;
+  }
 
   registerDefinition(id: string, def: NpcDefinition, loot?: LootEntry[], gold?: GoldDrop): void {
     this.definitions.set(id, def);
@@ -54,7 +63,7 @@ export class NpcManager {
     const def = this.definitions.get(definitionId);
     if (!def) return undefined;
 
-    const instance = createNpcInstance(definitionId, def, room.id);
+    const instance = createNpcInstance(definitionId, def, room.id, this.attributeDefs);
     this.instances.set(instance.instanceId, instance);
     room.addNpc(instance.instanceId, instance.name);
 
