@@ -70,4 +70,53 @@ describe("CraftingSystem craft", () => {
     expect(result.outputItemId).toBe("test-area:potion");
     expect(result.outputCount).toBe(1);
   });
+
+  test("craft prefers an exact recipe match over an earlier substring match", () => {
+    const crafting = new CraftingSystem();
+    // Registered first: its name contains the query "Potion" as a substring,
+    // so the old first-includes() lookup would pick this one.
+    crafting.registerRecipe("test-area:greater-potion", {
+      name: "Greater Potion",
+      ingredients: [{ itemId: "test-area:mushroom", count: 5 }],
+      output: { itemId: "test-area:potion", count: 1 },
+    } as RecipeDef);
+    // Registered second: an exact name match for the query.
+    crafting.registerRecipe("test-area:potion", {
+      name: "Potion",
+      ingredients: [{ itemId: "test-area:mushroom", count: 2 }],
+      output: { itemId: "test-area:potion", count: 1 },
+    } as RecipeDef);
+
+    const session = makeSession();
+    session.addItem(
+      createItemInstance("test-area:mushroom", ITEM_DEFS.get("test-area:mushroom")!, 2),
+    );
+
+    const result = crafting.craft(session, { flags: [] } as never, "Potion", ITEM_DEFS);
+
+    // The exact "Potion" recipe needs only the 2 mushrooms on hand and crafts
+    // successfully. If the substring "Greater Potion" were wrongly chosen, it
+    // would report missing ingredients (5 needed) instead.
+    expect(result.success).toBe(true);
+    expect(result.outputItemId).toBe("test-area:potion");
+  });
+
+  test("craft still falls back to a substring match when no exact match exists", () => {
+    const crafting = new CraftingSystem();
+    const recipe: RecipeDef = {
+      name: "Dream Potion",
+      ingredients: [{ itemId: "test-area:mushroom", count: 2 }],
+      output: { itemId: "test-area:potion", count: 1 },
+    } as RecipeDef;
+    crafting.registerRecipe("test-area:dream-potion", recipe);
+    const session = makeSession();
+    session.addItem(
+      createItemInstance("test-area:mushroom", ITEM_DEFS.get("test-area:mushroom")!, 2),
+    );
+
+    const result = crafting.craft(session, { flags: [] } as never, "dream", ITEM_DEFS);
+
+    expect(result.success).toBe(true);
+    expect(result.outputItemId).toBe("test-area:potion");
+  });
 });
