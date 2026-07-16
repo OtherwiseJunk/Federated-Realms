@@ -241,6 +241,15 @@ export function recordQuestCollect(ctx: CommandContext, itemDefId: string): void
   }
 }
 
+/** Advance visit-quest objectives for a room the player entered and notify them */
+export function recordQuestVisit(ctx: CommandContext, roomId: string): void {
+  const updates = ctx.world.questManager.recordVisit(ctx.session.characterDid, roomId);
+  for (const questId of updates) {
+    const payload = ctx.world.questManager.buildUpdatePayload(ctx.session.characterDid, questId);
+    if (payload) ctx.session.send(encodeMessage(payload));
+  }
+}
+
 export function sendNarrative(
   session: CharacterSession,
   text: string,

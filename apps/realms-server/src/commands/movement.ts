@@ -1,7 +1,7 @@
 import type { ParsedCommand } from "@realms/common";
 import { resolveDirection } from "@realms/common";
 import type { CommandContext } from "./index.js";
-import { sendNarrative, sendRoomState, sendMapUpdate } from "./index.js";
+import { sendNarrative, sendRoomState, sendMapUpdate, recordQuestVisit } from "./index.js";
 
 export function handleMovement(cmd: ParsedCommand, ctx: CommandContext): void {
   const { session, world, broadcast } = ctx;
@@ -96,6 +96,9 @@ export function handleMovement(cmd: ParsedCommand, ctx: CommandContext): void {
   // Send room state and map update to the moving player
   sendRoomState(session, ctx);
   sendMapUpdate(session, ctx);
+
+  // Advance any visit-type quest objectives for the room just entered
+  recordQuestVisit(ctx, targetRoom.id);
 
   // Auto-aggro: hostile NPCs in the room attack the player
   if (!targetRoom.isSafe()) {
