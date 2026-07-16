@@ -90,6 +90,7 @@ describe("CraftingSystem craft", () => {
     const session = makeSession();
     session.addItem(
       createItemInstance("test-area:mushroom", ITEM_DEFS.get("test-area:mushroom")!, 2),
+      ITEM_DEFS.get("test-area:mushroom"),
     );
 
     const result = crafting.craft(session, { flags: [] } as never, "Potion", ITEM_DEFS);
@@ -112,6 +113,7 @@ describe("CraftingSystem craft", () => {
     const session = makeSession();
     session.addItem(
       createItemInstance("test-area:mushroom", ITEM_DEFS.get("test-area:mushroom")!, 2),
+      ITEM_DEFS.get("test-area:mushroom"),
     );
 
     const result = crafting.craft(session, { flags: [] } as never, "dream", ITEM_DEFS);
