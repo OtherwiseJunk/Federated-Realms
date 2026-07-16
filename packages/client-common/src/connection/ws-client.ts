@@ -67,9 +67,14 @@ export class WsClient {
     // touch shared state, so every handler checks it still owns this.ws.
     const socket = new WebSocket(url);
     this.ws = socket;
+    // Distinguish a socket that never opened (connect failed) from an
+    // established one that later dropped, so the UI can report the right thing
+    // instead of leaving the user on a permanent "Connecting..." screen.
+    let opened = false;
 
     socket.onopen = () => {
       if (this.ws !== socket) return;
+      opened = true;
       this._connected = true;
     };
 
@@ -87,12 +92,11 @@ export class WsClient {
     socket.onclose = () => {
       if (this.ws !== socket) return;
       this._connected = false;
+      const error: ServerMessage = opened
+        ? { type: "error", code: "DISCONNECTED", message: "Connection closed" }
+        : { type: "error", code: "CONNECT_ERROR", message: "Could not connect to server" };
       for (const handler of this.handlers) {
-        handler({
-          type: "error",
-          code: "DISCONNECTED",
-          message: "Connection closed",
-        });
+        handler(error);
       }
     };
 

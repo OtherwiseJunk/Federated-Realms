@@ -17,7 +17,7 @@ import { AccountSetup, type AccountResult } from "./pages/AccountSetup.js";
 import { OAuthFlow, type OAuthResult } from "./pages/OAuthFlow.js";
 import "./App.css";
 
-type AppPhase = "splash" | "account" | "server" | "authenticate" | "create" | "play";
+type AppPhase = "splash" | "account" | "server" | "authenticate" | "create" | "play" | "error";
 
 interface SystemData {
   classes: Record<
@@ -71,7 +71,23 @@ export function App() {
   // Connection
   const [client, setClient] = useState<WsClient | null>(null);
 
+  // Connect-flow error surfaced to the user (never silently swallowed)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // -- Phase transitions --
+
+  const failWith = useCallback((message: string) => {
+    setErrorMessage(message);
+    setPhase("error");
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    setErrorMessage(null);
+    setClient(null);
+    setSystem(null);
+    setAuthSessionId("");
+    setPhase("server");
+  }, []);
 
   const handleAccountDone = useCallback((result: AccountResult) => {
     setAccount(result);
@@ -104,9 +120,14 @@ export function App() {
         return;
       }
 
-      // Dev mode: fetch system data for character creation
+      // Dev mode: fetch system data for character creation. A failed prereq
+      // fetch must surface an error, not silently connect with hardcoded
+      // warrior/human defaults.
       fetch(`${url}/system`)
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error(`Server responded ${res.status}`);
+          return res.json();
+        })
         .then((data) => {
           setSystem(data as SystemData);
           if (account?.mode === "dev") {
@@ -114,14 +135,13 @@ export function App() {
           }
           setPhase("create");
         })
-        .catch(() => {
-          if (account?.mode === "dev") {
-            setPlayerName(account.handle);
-          }
-          setPhase("play");
-        });
+        .catch(() =>
+          failWith(
+            "Couldn't load this server's character options. Check the server address and try again.",
+          ),
+        );
     },
-    [account],
+    [account, failWith],
   );
 
   const handleOAuthComplete = useCallback(
@@ -148,16 +168,28 @@ export function App() {
         if (result.handle) setPlayerName(handleLocalPart(result.handle));
         if (result.gameSystem) {
           setSystem(result.gameSystem as SystemData);
+          setPhase("create");
         } else {
+          // Only enter character creation once the system data has loaded;
+          // advancing first left `system` null and stuck on "Connecting...".
           fetch(`${serverUrl}/system`)
-            .then((res) => res.json())
-            .then((data) => setSystem(data as SystemData))
-            .catch(() => {});
+            .then((res) => {
+              if (!res.ok) throw new Error(`Server responded ${res.status}`);
+              return res.json();
+            })
+            .then((data) => {
+              setSystem(data as SystemData);
+              setPhase("create");
+            })
+            .catch(() =>
+              failWith(
+                "Couldn't load this server's character options. Check the server address and try again.",
+              ),
+            );
         }
-        setPhase("create");
       }
     },
-    [account, serverUrl],
+    [account, serverUrl, failWith],
   );
 
   const handleCreateComplete = useCallback(
@@ -210,7 +242,7 @@ export function App() {
             sessionId: data.sessionId,
           });
         } catch {
-          console.error("Character creation via XRPC failed");
+          failWith("Couldn't create your character on this server. Please try again.");
         }
       })();
     } else if (serverUrl) {
@@ -237,9 +269,22 @@ export function App() {
     finalRace,
     authSessionId,
     authToken,
+    failWith,
   ]);
 
   // -- Render phases --
+
+  if (phase === "error") {
+    return (
+      <div className="page-container">
+        <h2 style={{ color: "var(--color-red)" }}>Connection failed</h2>
+        <p style={{ color: "var(--color-red)" }}>{errorMessage}</p>
+        <button className="page-button page-button-primary" onClick={handleRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (phase === "splash") {
     return (
@@ -319,6 +364,18 @@ function GameView({ client, name }: { client: WsClient; name: string }) {
   useEffect(() => {
     if (state.connected) setConnecting(false);
   }, [state.connected]);
+
+  // A socket that fails to connect (or drops before it ever connected) must
+  // leave the "Connecting..." state so the status bar reports "Disconnected"
+  // instead of hanging forever.
+  useEffect(() => {
+    const unsubscribe = client.onMessage((msg) => {
+      if (msg.type === "error" && (msg.code === "DISCONNECTED" || msg.code === "CONNECT_ERROR")) {
+        setConnecting(false);
+      }
+    });
+    return unsubscribe;
+  }, [client]);
 
   // Portal auto-switch
   useEffect(() => {

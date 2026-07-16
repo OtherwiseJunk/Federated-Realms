@@ -103,6 +103,22 @@ describe("WsClient", () => {
     expect(received).toHaveLength(0);
   });
 
+  test("a socket that closes before opening surfaces a connect error", () => {
+    const client = new WsClient();
+    const received: ServerMessage[] = [];
+    client.onMessage((msg) => received.push(msg));
+
+    client.connectWithSession({ url: "ws://server-a/ws", sessionId: "s1" });
+    const socket = FakeWebSocket.instances.at(-1)!;
+    // No onopen — the connection attempt fails and the socket closes.
+    socket.onclose?.();
+
+    expect(client.connected).toBe(false);
+    expect(received).toEqual([
+      { type: "error", code: "CONNECT_ERROR", message: "Could not connect to server" },
+    ]);
+  });
+
   test("disconnect closes the socket without a spurious error broadcast", () => {
     const client = new WsClient();
     const socket = connect(client);
