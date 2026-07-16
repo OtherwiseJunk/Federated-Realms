@@ -68,6 +68,28 @@ import type {
 import type { Main as _PortalRecord } from "./lexicons/com/cacheblasters/realms/world/portal.defs.js";
 import type { Main as _ChatMessage } from "./lexicons/com/cacheblasters/realms/chat/message.defs.js";
 
+// ── Enum validation ──
+
+/**
+ * Assert that a value read from content (e.g. YAML) is one of a lexicon enum's
+ * known values, throwing with caller-supplied context (file + id) when it is
+ * not. Lexicon `knownValues` are an open set, so the generated validators
+ * accept unknown strings; content-authoring typos must fail the boot, not the
+ * player. Returns the value narrowed to the enum type on success.
+ */
+export function assertEnumValue<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  context: string,
+): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as T;
+  }
+  throw new Error(
+    `${context}: invalid value ${JSON.stringify(value)} (expected one of: ${allowed.join(", ")})`,
+  );
+}
+
 // ── Character ──
 
 export type CharacterProfile = Omit<
@@ -93,10 +115,16 @@ export type ClassDef = Omit<_ClassDef, "$type" | "baseAttributes" | "attributeBo
   attributeBonuses?: Attributes;
 };
 
+export const SPELL_EFFECTS = ["damage", "heal", "buff", "debuff"] as const;
+export type SpellEffect = (typeof SPELL_EFFECTS)[number];
+
+export const SPELL_TARGETS = ["enemy", "self", "ally"] as const;
+export type SpellTarget = (typeof SPELL_TARGETS)[number];
+
 export type SpellDef = Omit<_SpellDef, "$type" | "effect" | "target"> & {
   $type?: string;
-  effect: "damage" | "heal" | "buff" | "debuff";
-  target: "enemy" | "self" | "ally";
+  effect: SpellEffect;
+  target: SpellTarget;
 };
 
 export type RaceDef = Omit<_RaceDef, "$type" | "attributeBonuses"> & {
@@ -115,17 +143,19 @@ export type FormulaDef = Omit<_FormulaDef, "$type"> & { $type?: string };
 
 // ── World ──
 
-export type Direction =
-  | "north"
-  | "south"
-  | "east"
-  | "west"
-  | "up"
-  | "down"
-  | "northeast"
-  | "northwest"
-  | "southeast"
-  | "southwest";
+export const DIRECTIONS = [
+  "north",
+  "south",
+  "east",
+  "west",
+  "up",
+  "down",
+  "northeast",
+  "northwest",
+  "southeast",
+  "southwest",
+] as const;
+export type Direction = (typeof DIRECTIONS)[number];
 
 export type RoomExit = Omit<_RoomExit, "$type" | "direction"> & {
   $type?: string;
@@ -196,7 +226,8 @@ export type ItemDefinition = Omit<
 
 // ── NPCs ──
 
-export type NpcBehavior = "hostile" | "merchant" | "questgiver" | "wanderer" | "static";
+export const NPC_BEHAVIORS = ["hostile", "merchant", "questgiver", "wanderer", "static"] as const;
+export type NpcBehavior = (typeof NPC_BEHAVIORS)[number];
 
 // Object type aliases (not interfaces) so they carry an implicit index
 // signature and stay assignable to the lexicon's open `LexMap` dialogue field
@@ -223,7 +254,8 @@ export type NpcDefinition = Omit<
 
 // ── Quests ──
 
-export type ObjectiveType = "kill" | "collect" | "talk" | "visit" | "deliver";
+export const OBJECTIVE_TYPES = ["kill", "collect", "talk", "visit", "deliver"] as const;
+export type ObjectiveType = (typeof OBJECTIVE_TYPES)[number];
 export type QuestStatus = "active" | "completed" | "failed";
 
 export type QuestObjective = Omit<_QuestObjective, "$type" | "type" | "count"> & {
