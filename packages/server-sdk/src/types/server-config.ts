@@ -105,6 +105,12 @@ export function loadConfig(defaultDataPath?: string): ServerConfig {
  * Parse TRUSTED_PROXY_HOPS. Defaults to 1 (single host nginx). Non-numeric or
  * negative values fall back to the safe default of 1; 0 is honored (disables
  * trusting X-Forwarded-For).
+ *
+ * SECURITY: this is only sound if the app sits behind exactly this many trusted
+ * reverse proxies AND is not reachable directly. A client that can reach the app
+ * without traversing those proxies can forge X-Forwarded-For and spoof its
+ * rate-limit identity, defeating the limiter. Set to 0 (use the socket address,
+ * ignore X-Forwarded-For) if the app is directly exposed.
  */
 function parseTrustedProxyHops(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return 1;
