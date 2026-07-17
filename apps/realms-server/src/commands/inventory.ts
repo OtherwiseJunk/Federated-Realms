@@ -170,7 +170,7 @@ function handleExamine(cmd: ParsedCommand, ctx: CommandContext): void {
   lines.push(def.description.trim());
   if (def.type) lines.push(`Type: ${def.type}`);
   if (def.rarity) lines.push(`Rarity: ${def.rarity}`);
-  if (def.weight) lines.push(`Weight: ${def.weight}`);
+  if (def.weight) lines.push(`Weight: ${def.weight / world.gameSystem.weightScale}`);
   if (def.value) lines.push(`Value: ${def.value} gold`);
   if (def.levelRequired && def.levelRequired > 1)
     lines.push(`Requires level: ${def.levelRequired}`);

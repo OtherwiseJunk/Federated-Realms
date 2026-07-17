@@ -289,7 +289,7 @@ describe("attack resolution", () => {
     // Run many times to eventually get a crit
     let gotCrit = false;
     for (let i = 0; i < 1000; i++) {
-      const result = resolvePlayerAttack({ str: 10 }, {}, { dex: 30 }, 10);
+      const result = resolvePlayerAttack({ str: 10, dex: 10 }, {}, { str: 10, dex: 30 }, 10);
       if (result.critical) {
         expect(result.hit).toBe(true);
         expect(result.damage).toBeGreaterThan(0);

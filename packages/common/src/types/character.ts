@@ -47,6 +47,14 @@ export interface GameSystem {
   equipSlots: Record<string, EquipSlotDef>;
   itemTypes: Record<string, ItemTypeDef>;
   spells: Record<string, SpellDef>;
+  /**
+   * Divisor applied to raw integer item weights for display. atproto's data
+   * model has no float type, so item `weight` is stored as an integer in
+   * 1/weightScale units (e.g. weightScale: 10 means stored weights are tenths —
+   * a raw weight of 5 displays as 0.5). Each server/system declares its own
+   * scale in system.yml; defaults to 1 (weights are whole units).
+   */
+  weightScale: number;
 }
 
 // ── Formula evaluation ──

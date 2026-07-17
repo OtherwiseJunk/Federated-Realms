@@ -31,6 +31,27 @@ export interface SignedAttestation {
   sig: string;
 }
 
+/**
+ * Build an actionable error for when logging in as the configured server
+ * account (SERVER_DID) fails. The most common cause is that the account's repo
+ * no longer exists on the PDS — e.g. after a PDS reset/wipe the DID persists in
+ * PLC (an external append-only registry) but its backing account is gone, so
+ * the handle no longer resolves. The message tells the operator how to recover.
+ */
+export function serverAccountLoginError(
+  handle: string,
+  serverDid: string,
+  pdsUrl: string,
+  cause: string,
+): Error {
+  return new Error(
+    `Failed to log in as the server account "${handle}" (SERVER_DID=${serverDid}) on ${pdsUrl}: ${cause}. ` +
+      `The account's repo may not exist on the PDS: after a PDS reset/wipe the DID persists in PLC but its ` +
+      `account is gone and the handle stops resolving. Recreate the server account on the PDS and set ` +
+      `SERVER_DID to the new DID, or clear SERVER_DID to have the server create a fresh account.`,
+  );
+}
+
 export class ServerIdentity {
   did = "";
   agent!: AtpAgent;
@@ -80,10 +101,19 @@ export class ServerIdentity {
       : config.serverHandle;
 
     if (config.serverDid) {
-      await this.agent.login({
-        identifier: handle,
-        password: config.serverPassword,
-      });
+      try {
+        await this.agent.login({
+          identifier: handle,
+          password: config.serverPassword,
+        });
+      } catch (err) {
+        throw serverAccountLoginError(
+          handle,
+          config.serverDid,
+          config.pdsUrl,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
       this.did = config.serverDid;
       console.log(`   Server identity: ${this.did}`);
     } else {

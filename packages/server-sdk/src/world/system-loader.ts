@@ -1,5 +1,6 @@
 import { parse as parseYaml } from "yaml";
 import { withDefaultFormulas, type GameSystem } from "@realms/common";
+import { assertEnumValue, SPELL_EFFECTS, SPELL_TARGETS } from "@realms/lexicons";
 import type {
   AttributeDef,
   ClassDef,
@@ -10,14 +11,17 @@ import type {
   SpellDef,
 } from "@realms/lexicons";
 
+// Every section is optional: a system.yml may omit any of them, and each is
+// resolved to `{}` at the single `?? {}` point below.
 interface SystemYaml {
-  attributes: Record<string, AttributeDef>;
-  classes: Record<string, ClassDef>;
-  races: Record<string, RaceDef>;
-  formulas: Record<string, FormulaDef>;
-  equipSlots: Record<string, EquipSlotDef>;
-  itemTypes: Record<string, ItemTypeDef>;
-  spells: Record<string, SpellDef>;
+  attributes?: Record<string, AttributeDef>;
+  classes?: Record<string, ClassDef>;
+  races?: Record<string, RaceDef>;
+  formulas?: Record<string, FormulaDef>;
+  equipSlots?: Record<string, EquipSlotDef>;
+  itemTypes?: Record<string, ItemTypeDef>;
+  spells?: Record<string, SpellDef>;
+  weightScale?: number;
 }
 
 export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
@@ -40,7 +44,17 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     equipSlots: raw.equipSlots ?? {},
     itemTypes: raw.itemTypes ?? {},
     spells: raw.spells ?? {},
+    // Item weights are stored as integers in 1/weightScale units (atproto has
+    // no float type); display divides by this. Defaults to 1 (whole units).
+    weightScale: raw.weightScale ?? 1,
   };
+
+  // Spell effect/target are open lexicon enums, so a typo would otherwise load a
+  // silently broken spell. Fail the boot with the spell id for context.
+  for (const [id, spell] of Object.entries(system.spells)) {
+    assertEnumValue(spell.effect, SPELL_EFFECTS, `system.yml: spell "${id}" effect`);
+    assertEnumValue(spell.target, SPELL_TARGETS, `system.yml: spell "${id}" target`);
+  }
 
   const attrCount = Object.keys(system.attributes).length;
   const classCount = Object.keys(system.classes).length;

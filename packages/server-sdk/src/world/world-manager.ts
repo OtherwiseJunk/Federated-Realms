@@ -26,6 +26,11 @@ export class WorldManager {
   async initialize(): Promise<void> {
     this.gameSystem = await loadGameSystem(this.config.dataPath);
 
+    // Give the NPC manager the system's attribute definitions before any NPCs
+    // spawn during area loading, so each NPC inherits the configured attribute
+    // defaults instead of a hardcoded fallback.
+    this.npcManager.setAttributeDefs(this.gameSystem.attributes);
+
     const areasPath = `${this.config.dataPath}/areas`;
     await this.areaManager.loadFromDirectory(areasPath);
 

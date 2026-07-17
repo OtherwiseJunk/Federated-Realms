@@ -1,4 +1,13 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test, spyOn } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  spyOn,
+} from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -224,5 +233,95 @@ describe("AreaManager quest loading", () => {
     expect(def.repeatable).toBe(true);
     expect(def.consumeItems).toBe(false);
     expect(def.objectives[0].count).toBe(5);
+  });
+});
+
+const ENUM_MANIFEST_YML = `title: Enum Area
+description: An area for enum validation tests.
+`;
+
+describe("AreaManager enum validation", () => {
+  let tempDir: string;
+  let silenceLog: ReturnType<typeof spyOn>;
+  let silenceWarn: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    silenceLog = spyOn(console, "log").mockImplementation(() => {});
+    silenceWarn = spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    silenceLog.mockRestore();
+    silenceWarn.mockRestore();
+    if (tempDir) await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function loadArea(files: Record<string, string>): Promise<void> {
+    tempDir = await mkdtemp(join(tmpdir(), "area-manager-enum-"));
+    const areaPath = join(tempDir, "enum-area");
+    await mkdir(areaPath);
+    await writeFile(join(areaPath, "manifest.yml"), ENUM_MANIFEST_YML);
+    for (const [name, contents] of Object.entries(files)) {
+      await writeFile(join(areaPath, name), contents);
+    }
+    const areaManager = new AreaManager(new NpcManager(), new QuestManager(), new CraftingSystem());
+    await areaManager.loadFromDirectory(tempDir);
+  }
+
+  test("rejects an unknown room exit direction with file and id context", async () => {
+    const rooms = `- id: gate
+  title: The Gate
+  description: A gate.
+  coordinates: { x: 0, y: 0, z: 0 }
+  exits:
+    - direction: nrth
+      target: hall
+`;
+    const promise = loadArea({ "rooms.yml": rooms });
+    await expect(promise).rejects.toThrow(/nrth/);
+    await expect(loadArea({ "rooms.yml": rooms })).rejects.toThrow(/gate/);
+  });
+
+  test("rejects an unknown NPC behavior with file and id context", async () => {
+    const npcs = `definitions:
+  - id: keeper
+    name: Web Keeper
+    description: A merchant.
+    behavior: merchnat
+`;
+    await expect(loadArea({ "npcs.yml": npcs })).rejects.toThrow(/merchnat/);
+    await expect(loadArea({ "npcs.yml": npcs })).rejects.toThrow(/keeper/);
+  });
+
+  test("rejects an unknown quest objective type with file and id context", async () => {
+    const quests = `quests:
+  - id: gather
+    name: Gather
+    description: Gather things.
+    objectives:
+      - type: kil
+        description: Kill something.
+        target: goblin
+`;
+    await expect(loadArea({ "quests.yml": quests })).rejects.toThrow(/kil/);
+    await expect(loadArea({ "quests.yml": quests })).rejects.toThrow(/gather/);
+  });
+
+  test("accepts known enum values", async () => {
+    const rooms = `- id: gate
+  title: The Gate
+  description: A gate.
+  coordinates: { x: 0, y: 0, z: 0 }
+  exits:
+    - direction: north
+      target: hall
+`;
+    const npcs = `definitions:
+  - id: keeper
+    name: Web Keeper
+    description: A merchant.
+    behavior: merchant
+`;
+    await expect(loadArea({ "rooms.yml": rooms, "npcs.yml": npcs })).resolves.toBeUndefined();
   });
 });

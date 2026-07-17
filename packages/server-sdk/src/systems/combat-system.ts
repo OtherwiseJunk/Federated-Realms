@@ -399,7 +399,7 @@ export class CombatSystem {
     }
 
     const { broadcast } = this.ctx;
-    const dex = session.state.attributes.dex ?? 10;
+    const dex = session.state.attributes.dex;
 
     // Flee DC is based on the highest-level combatant
     const combatNpcs = this.getCombatNpcs(session);
@@ -611,7 +611,7 @@ export class CombatSystem {
         remainingTicks: 5,
       });
       // Apply immediately
-      session.state.attributes.str = (session.state.attributes.str ?? 10) + result.amount;
+      session.state.attributes.str += result.amount;
     }
 
     // All combat NPCs retaliate if in combat

@@ -106,15 +106,26 @@ export class CraftingSystem {
     recipeName: string,
     itemDefs: Map<string, ItemDefinition>,
   ): CraftResult {
-    // Find recipe by name or partial match
+    // Find recipe by exact id/name first, then fall back to a partial match.
+    // Preferring exact matches stops a partial name like "potion" from silently
+    // picking "greater potion" just because it was registered earlier.
     const lower = recipeName.toLowerCase();
     let matchId: string | undefined;
     let matchDef: RecipeDef | undefined;
     for (const [id, def] of this.recipes.entries()) {
-      if (def.name.toLowerCase().includes(lower)) {
+      if (id.toLowerCase() === lower || def.name.toLowerCase() === lower) {
         matchId = id;
         matchDef = def;
         break;
+      }
+    }
+    if (!matchDef) {
+      for (const [id, def] of this.recipes.entries()) {
+        if (def.name.toLowerCase().includes(lower)) {
+          matchId = id;
+          matchDef = def;
+          break;
+        }
       }
     }
 

@@ -50,10 +50,6 @@ export function attrMod(value: number): number {
   return Math.floor((value - 10) / 2);
 }
 
-function getAttr(attrs: Attributes | undefined, key: string, fallback: number = 10): number {
-  return attrs?.[key] ?? fallback;
-}
-
 // ── Equipment Helpers ──
 
 /**
@@ -162,7 +158,7 @@ export interface AttackResult {
 export function resolvePlayerAttack(
   playerAttrs: Attributes,
   playerEquipment: Record<string, ItemInstance>,
-  npcAttrs: Attributes | undefined,
+  npcAttrs: Attributes,
   _npcLevel: number,
 ): AttackResult {
   const roll = rollD20();
@@ -172,14 +168,14 @@ export function resolvePlayerAttack(
   // In the future we could have weapon-specific bonuses
   // (e.g. bows use dex, heavy weapons use str, maybe even some weapons using other attributes),
   // but for now we just take the best of both.
-  const strMod = attrMod(getAttr(playerAttrs, "str"));
-  const dexMod = attrMod(getAttr(playerAttrs, "dex"));
+  const strMod = attrMod(playerAttrs.str);
+  const dexMod = attrMod(playerAttrs.dex);
   const attackBonus = Math.max(strMod, dexMod);
   const totalAttack = roll + attackBonus;
 
   // NPC defense: 10 + dex modifier
   // We could also factor in armor or other defenses here, but for now we keep it simple.
-  const npcDexMod = attrMod(getAttr(npcAttrs, "dex"));
+  const npcDexMod = attrMod(npcAttrs.dex);
   const defense = 10 + npcDexMod;
 
   const hit = critical || totalAttack >= defense;
@@ -212,7 +208,7 @@ export function resolvePlayerAttack(
  * they must not mutate player attributes to encode it.
  */
 export function resolveNpcAttack(
-  npcAttrs: Attributes | undefined,
+  npcAttrs: Attributes,
   npcLevel: number,
   npcName: string,
   playerAttrs: Attributes,
@@ -224,12 +220,12 @@ export function resolveNpcAttack(
 
   // NPC attack bonus: dex modifier + level bonus
   // For simplicity, we use dex for NPC attack bonus, but we could also have some NPCs use str or other attributes depending on their type.
-  const npcDexMod = attrMod(getAttr(npcAttrs, "dex"));
+  const npcDexMod = attrMod(npcAttrs.dex);
   const attackBonus = npcDexMod + Math.floor(npcLevel / 2);
   const totalAttack = roll + attackBonus;
 
   // Player defense: 10 + dex modifier + armor + temporary AC bonus (e.g. defend)
-  const playerDexMod = attrMod(getAttr(playerAttrs, "dex"));
+  const playerDexMod = attrMod(playerAttrs.dex);
   const armorDefense = getEquippedDefense(playerEquipment);
   const defense = 10 + playerDexMod + armorDefense + acBonus;
 
@@ -238,7 +234,7 @@ export function resolveNpcAttack(
   // NPC damage: level-based + str modifier
   let damage = 0;
   if (hit) {
-    const npcStrMod = attrMod(getAttr(npcAttrs, "str"));
+    const npcStrMod = attrMod(npcAttrs.str);
     const baseDamage = npcLevel * 2 + npcStrMod;
     damage = Math.max(1, baseDamage);
     if (critical) damage *= 2;
@@ -337,18 +333,18 @@ function parseDice(notation: string): { count: number; sides: number } | null {
 export function resolveSpellAttack(
   spell: SpellDef,
   casterAttrs: Attributes,
-  targetAttrs: Attributes | undefined,
+  targetAttrs: Attributes,
   _targetLevel: number,
 ): SpellResult {
   const roll = rollD20();
   const critical = roll === 20;
 
-  const castMod = attrMod(getAttr(casterAttrs, spell.attribute));
+  const castMod = attrMod(casterAttrs[spell.attribute]);
   const spellBonus = castMod;
   const totalRoll = roll + spellBonus;
 
   // Target defense: 10 + dex modifier (same as melee)
-  const targetDexMod = attrMod(getAttr(targetAttrs, "dex"));
+  const targetDexMod = attrMod(targetAttrs.dex);
   const defense = 10 + targetDexMod;
 
   const success = critical || totalRoll >= defense;
@@ -382,7 +378,7 @@ export function resolveSpellAttack(
  * Amount = power + dice + attribute mod.
  */
 export function resolveSpellSelf(spell: SpellDef, casterAttrs: Attributes): SpellResult {
-  const castMod = attrMod(getAttr(casterAttrs, spell.attribute));
+  const castMod = attrMod(casterAttrs[spell.attribute]);
 
   let amount = spell.power + castMod;
   if (spell.dice) {

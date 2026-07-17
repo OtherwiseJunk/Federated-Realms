@@ -1,5 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
-import type { ServerMessage, CombatantInfo, AdaptationRequired } from "@realms/protocol";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type {
+  ServerMessage,
+  CombatantInfo,
+  AdaptationRequired,
+  NarrativeStyle,
+  CharacterStatsPayload,
+  MapSnapshot,
+  QuestObjective,
+  QuestSnapshot,
+  PortalOffer,
+} from "@realms/protocol";
 import type { RoomState, ItemInstance } from "@realms/common";
 import type { WsClient } from "../connection/ws-client.js";
 
@@ -7,54 +17,25 @@ export type EquipmentMap = Record<string, ItemInstance>;
 
 export interface NarrativeLine {
   text: string;
-  style: "info" | "error" | "combat" | "system" | "chat" | "room";
+  // Protocol narrative styles plus a client-only "room" style.
+  style: NarrativeStyle | "room";
   timestamp: number;
 }
 
-export interface CharacterStats {
-  hp: number;
-  maxHp: number;
-  mp: number;
-  maxMp: number;
-  ap: number;
-  maxAp: number;
-  gold: number;
-  level: number;
-  xp: number;
-  xpToNext: number;
-}
-
-export interface QuestObjectiveEntry {
-  description: string;
-  current: number;
-  required: number;
-  done: boolean;
-}
-
-export interface QuestEntry {
-  questId: string;
-  questName: string;
-  status: "active" | "completed" | "failed";
-  objectives: QuestObjectiveEntry[];
-}
-
-export interface MapState {
-  grid: string[];
-  cursorRow: number;
-  cursorCol: number;
-  legend: string[];
-}
+// The payload shapes below are defined once in @realms/protocol and shared by
+// producers (server) and consumers (this hook). The aliases keep the public
+// names this hook has always exported while removing the duplicated field
+// declarations that used to drift from the protocol.
+export type CharacterStats = CharacterStatsPayload;
+export type QuestObjectiveEntry = QuestObjective;
+export type QuestEntry = QuestSnapshot;
+export type MapState = MapSnapshot;
+export type PortalOfferState = PortalOffer;
 
 export interface CombatState {
   active: boolean;
   combatants: CombatantInfo[];
   targetId: string;
-}
-
-export interface PortalOfferState {
-  targetServer: { name: string; did: string; endpoint: string };
-  sessionId: string;
-  websocketUrl: string;
 }
 
 export interface GameState {
@@ -75,6 +56,35 @@ export interface GameState {
 
 const MAX_NARRATIVE = 500;
 
+/**
+ * Append lines to the narrative log, keeping at most `max` lines. The combined
+ * array is sliced from its end, which stays correct even when a single message
+ * splits into more than `max` lines. The previous `slice(-(max - additions))`
+ * offset went non-negative in that case, sliced from the wrong end, and let the
+ * log grow past the cap.
+ */
+export function appendNarrativeLines(
+  existing: NarrativeLine[],
+  additions: NarrativeLine[],
+  max = MAX_NARRATIVE,
+): NarrativeLine[] {
+  const combined = [...existing, ...additions];
+  return combined.length > max ? combined.slice(-max) : combined;
+}
+
+/**
+ * Objectives that transitioned to done since the previous snapshot, compared by
+ * index. Announcing only these avoids re-printing an already-completed
+ * objective on every subsequent quest_update — a progress tick on a later
+ * objective used to re-announce the first.
+ */
+export function newlyCompletedObjectives(
+  previousDone: readonly boolean[] | undefined,
+  objectives: readonly QuestObjective[],
+): QuestObjective[] {
+  return objectives.filter((o, i) => o.done && !(previousDone?.[i] ?? false));
+}
+
 export function useGameState(client: WsClient) {
   const [state, setState] = useState<GameState>({
     connected: false,
@@ -92,11 +102,15 @@ export function useGameState(client: WsClient) {
     adaptation: null,
   });
 
+  // Per-quest snapshot of each objective's done flag, used to announce only
+  // objectives that newly completed rather than re-announcing on every update.
+  const objectivesDoneRef = useRef<Map<string, boolean[]>>(new Map());
+
   const addNarrative = useCallback((text: string, style: NarrativeLine["style"] = "info") => {
     const entries = text.split("\n").map((line) => ({ text: line, style, timestamp: Date.now() }));
     setState((prev) => ({
       ...prev,
-      narrative: [...prev.narrative.slice(-(MAX_NARRATIVE - entries.length)), ...entries],
+      narrative: appendNarrativeLines(prev.narrative, entries),
     }));
   }, []);
 
@@ -162,35 +176,17 @@ export function useGameState(client: WsClient) {
           );
           break;
 
-        case "character_update":
-          setState((prev) => ({
-            ...prev,
-            stats: {
-              hp: msg.hp,
-              maxHp: msg.maxHp,
-              mp: msg.mp,
-              maxMp: msg.maxMp,
-              ap: msg.ap,
-              maxAp: msg.maxAp,
-              gold: msg.gold,
-              level: msg.level,
-              xp: msg.xp,
-              xpToNext: msg.xpToNext,
-            },
-          }));
+        case "character_update": {
+          const { type: _type, ...stats } = msg;
+          setState((prev) => ({ ...prev, stats }));
           break;
+        }
 
-        case "map_update":
-          setState((prev) => ({
-            ...prev,
-            map: {
-              grid: msg.grid,
-              cursorRow: msg.cursorRow,
-              cursorCol: msg.cursorCol,
-              legend: msg.legend,
-            },
-          }));
+        case "map_update": {
+          const { type: _type, ...map } = msg;
+          setState((prev) => ({ ...prev, map }));
           break;
+        }
 
         case "level_up":
           addNarrative(`Level up! You are now level ${msg.level}!`, "system");
@@ -260,40 +256,44 @@ export function useGameState(client: WsClient) {
           }));
           if (msg.status === "completed") {
             addNarrative(`\u2605 Quest complete: ${msg.questName}!`, "system");
+            objectivesDoneRef.current.delete(msg.questId);
           } else {
-            const lastDone = [...msg.objectives].reverse().find((o) => o.done);
-            if (lastDone) {
-              addNarrative(`\u2713 Objective: ${lastDone.description}`, "system");
+            const justCompleted = newlyCompletedObjectives(
+              objectivesDoneRef.current.get(msg.questId),
+              msg.objectives,
+            );
+            for (const objective of justCompleted) {
+              addNarrative(`\u2713 Objective: ${objective.description}`, "system");
             }
+            objectivesDoneRef.current.set(
+              msg.questId,
+              msg.objectives.map((o) => o.done),
+            );
           }
           break;
         }
 
         case "quest_log":
+          // Seed the done-flag baseline so a later quest_update diffs against
+          // the objectives already completed here instead of re-announcing them.
+          for (const q of msg.quests) {
+            objectivesDoneRef.current.set(
+              q.questId,
+              q.objectives.map((o) => o.done),
+            );
+          }
           setState((prev) => ({
             ...prev,
-            quests: msg.quests
-              .filter((q) => q.status === "active")
-              .map((q) => ({
-                questId: q.questId,
-                questName: q.questName,
-                status: q.status,
-                objectives: q.objectives,
-              })),
+            quests: msg.quests.filter((q) => q.status === "active"),
           }));
           break;
 
-        case "portal_offer":
-          setState((prev) => ({
-            ...prev,
-            portalOffer: {
-              targetServer: msg.targetServer,
-              sessionId: msg.sessionId,
-              websocketUrl: msg.websocketUrl,
-            },
-          }));
+        case "portal_offer": {
+          const { type: _type, ...portalOffer } = msg;
+          setState((prev) => ({ ...prev, portalOffer }));
           addNarrative(`The portal pulls you through to ${msg.targetServer.name}...`, "system");
           break;
+        }
 
         case "adaptation_required":
           setState((prev) => ({ ...prev, adaptation: msg.adaptation }));

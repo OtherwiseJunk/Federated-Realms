@@ -1,7 +1,28 @@
 import type { AtpAgent } from "@atproto/api";
 import { NSID } from "@realms/lexicons";
+import type { Main as AreaRecord } from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/world/area.defs.js";
+import type {
+  Main as RoomRecord,
+  Exit as RoomExit,
+} from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/world/room.defs.js";
+import type { Main as ItemRecord } from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/item/definition.defs.js";
+import type { Main as NpcRecord } from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/npc/definition.defs.js";
+import type {
+  Main as QuestRecord,
+  Objective as QuestObjective,
+} from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/quest/definition.defs.js";
+import type {
+  Main as RecipeRecord,
+  Ingredient as RecipeIngredient,
+} from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/craft/recipe.defs.js";
+import type { Main as PortalRecord } from "@realms/lexicons/src/lexicons/com/cacheblasters/realms/world/portal.defs.js";
 import type { WorldManager } from "../world/world-manager.js";
 
+// Each record literal below is annotated `satisfies <lexicon Main>` so that a
+// renamed or newly-required lexicon field fails compilation here instead of
+// silently dropping from published records (issue #82). Nested array elements
+// carry explicit return types (RoomExit / QuestObjective / RecipeIngredient) so
+// the same check reaches inside `.map(...)`.
 export class WorldPublisher {
   constructor(
     private agent: AtpAgent,
@@ -12,37 +33,39 @@ export class WorldPublisher {
     const stats = { areas: 0, rooms: 0, items: 0, npcs: 0, quests: 0, recipes: 0, portals: 0 };
 
     for (const [id, area] of world.areaManager.getAllAreas()) {
-      await this.putRecord(NSID.WorldArea, toRkey(id), {
+      const record = {
         $type: NSID.WorldArea,
         title: area.title,
         description: area.description,
         levelRange: area.levelRange,
-      });
-      stats.areas++;
+      } satisfies AreaRecord;
+      if (await this.putRecord(NSID.WorldArea, toRkey(id), record)) stats.areas++;
     }
 
     for (const [id, room] of world.areaManager.getAllRooms()) {
       const areaId = id.split(":")[0];
-      await this.putRecord(NSID.WorldRoom, toRkey(id), {
+      const record = {
         $type: NSID.WorldRoom,
         title: room.title,
         description: room.description,
         area: areaId,
         coordinates: room.coordinates,
-        exits: room.exits.map((e) => ({
-          direction: e.direction,
-          target: e.target,
-          portal: e.portal || undefined,
-          requiredLevel: e.requiredLevel || undefined,
-          description: e.description || undefined,
-        })),
+        exits: room.exits.map(
+          (e): RoomExit => ({
+            direction: e.direction,
+            target: e.target,
+            portal: e.portal || undefined,
+            requiredLevel: e.requiredLevel || undefined,
+            description: e.description || undefined,
+          }),
+        ),
         flags: room.flags.length > 0 ? room.flags : undefined,
-      });
-      stats.rooms++;
+      } satisfies RoomRecord;
+      if (await this.putRecord(NSID.WorldRoom, toRkey(id), record)) stats.rooms++;
     }
 
     for (const [id, item] of world.areaManager.getAllItemDefinitions()) {
-      await this.putRecord(NSID.ItemDefinition, toRkey(id), {
+      const record = {
         $type: NSID.ItemDefinition,
         name: item.name,
         type: item.type,
@@ -53,28 +76,31 @@ export class WorldPublisher {
         levelRequired: item.levelRequired,
         stackable: item.stackable ? true : undefined,
         maxStack: item.maxStack === (item.stackable ? 99 : 1) ? undefined : item.maxStack,
-        properties: item.properties,
+        // Open map: app-facing values are `unknown`; assert to the lexicon's LexMap.
+        properties: item.properties as ItemRecord["properties"],
         tags: item.tags?.length ? item.tags : undefined,
-      });
-      stats.items++;
+      } satisfies ItemRecord;
+      if (await this.putRecord(NSID.ItemDefinition, toRkey(id), record)) stats.items++;
     }
 
     for (const [id, npc] of world.npcManager.getAllDefinitions()) {
-      await this.putRecord(NSID.NpcDefinition, toRkey(id), {
+      const record = {
         $type: NSID.NpcDefinition,
         name: npc.name,
         description: npc.description,
         behavior: npc.behavior,
         level: npc.level,
         attributes: npc.attributes,
+        dialogue: npc.dialogue,
         art: npc.art?.length ? npc.art : undefined,
+        shop: npc.shop?.length ? npc.shop : undefined,
         tags: npc.tags?.length ? npc.tags : undefined,
-      });
-      stats.npcs++;
+      } satisfies NpcRecord;
+      if (await this.putRecord(NSID.NpcDefinition, toRkey(id), record)) stats.npcs++;
     }
 
     for (const [id, quest] of world.questManager.getAllDefinitions()) {
-      await this.putRecord(NSID.QuestDefinition, toRkey(id), {
+      const record = {
         $type: NSID.QuestDefinition,
         name: quest.name,
         description: quest.description,
@@ -82,34 +108,38 @@ export class WorldPublisher {
         giver: quest.giver,
         turnIn: quest.turnIn,
         prerequisites: quest.prerequisites?.length ? quest.prerequisites : undefined,
-        objectives: quest.objectives.map((o) => ({
-          type: o.type,
-          description: o.description,
-          target: o.target,
-          count: o.count === 1 ? undefined : o.count,
-        })),
+        objectives: quest.objectives.map(
+          (o): QuestObjective => ({
+            type: o.type,
+            description: o.description,
+            target: o.target,
+            count: o.count === 1 ? undefined : o.count,
+          }),
+        ),
         ordered: quest.ordered ? undefined : false,
         rewards: quest.rewards,
         repeatable: quest.repeatable ? true : undefined,
         consumeItems: quest.consumeItems ? undefined : false,
         tags: quest.tags?.length ? quest.tags : undefined,
-      });
-      stats.quests++;
+      } satisfies QuestRecord;
+      if (await this.putRecord(NSID.QuestDefinition, toRkey(id), record)) stats.quests++;
     }
 
     for (const [id, recipe] of world.craftingSystem.getAllRecipes()) {
-      await this.putRecord(NSID.CraftRecipe, toRkey(id), {
+      const record = {
         $type: NSID.CraftRecipe,
         name: recipe.name,
         description: recipe.description,
         station: recipe.station,
         levelRequired: recipe.levelRequired,
-        ingredients: recipe.ingredients,
-        output: recipe.output,
+        ingredients: recipe.ingredients.map(
+          (ing): RecipeIngredient => ({ itemId: ing.itemId, count: ing.count }),
+        ),
+        output: { itemId: recipe.output.itemId, count: recipe.output.count },
         successChance: recipe.successChance,
         tags: recipe.tags?.length ? recipe.tags : undefined,
-      });
-      stats.recipes++;
+      } satisfies RecipeRecord;
+      if (await this.putRecord(NSID.CraftRecipe, toRkey(id), record)) stats.recipes++;
     }
 
     for (const [id, room] of world.areaManager.getAllRooms()) {
@@ -123,16 +153,17 @@ export class WorldPublisher {
         const targetServerDid = parts.join(":");
 
         const portalRkey = `${toRkey(id)}-${exit.direction}`;
-        await this.putRecord(NSID.WorldPortal, portalRkey, {
+        const record = {
           $type: NSID.WorldPortal,
           sourceRoom: id,
           direction: exit.direction,
-          targetServerDid,
+          // Federated room targets carry the destination server DID by construction.
+          targetServerDid: targetServerDid as PortalRecord["targetServerDid"],
           targetRoom,
           description: exit.description || undefined,
           requiredLevel: exit.requiredLevel || undefined,
-        });
-        stats.portals++;
+        } satisfies PortalRecord;
+        if (await this.putRecord(NSID.WorldPortal, portalRkey, record)) stats.portals++;
       }
     }
 
@@ -145,11 +176,12 @@ export class WorldPublisher {
     return { portalCount: stats.portals };
   }
 
+  /** Publish a single record. Returns true on success, false if the write failed. */
   private async putRecord(
     collection: string,
     rkey: string,
     record: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       await this.agent.com.atproto.repo.putRecord({
         repo: this.did,
@@ -157,11 +189,13 @@ export class WorldPublisher {
         rkey,
         record,
       });
+      return true;
     } catch (err) {
       console.warn(
         `   Failed to publish ${collection}/${rkey}:`,
         err instanceof Error ? err.message : err,
       );
+      return false;
     }
   }
 }

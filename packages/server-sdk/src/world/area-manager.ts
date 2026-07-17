@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { RoomRecord, ItemDefinition, NpcDefinition, NpcBehavior } from "@realms/lexicons";
+import type { RoomRecord, ItemDefinition, NpcDefinition } from "@realms/lexicons";
+import { assertEnumValue, DIRECTIONS, NPC_BEHAVIORS, OBJECTIVE_TYPES } from "@realms/lexicons";
 import { Room } from "./room.js";
 import { createItemInstance, type ItemRegistry } from "@realms/common";
 import { NpcManager, type LootEntry } from "../entities/npc-manager.js";
@@ -220,7 +221,11 @@ export class AreaManager {
           area: areaId,
           coordinates: def.coordinates,
           exits: def.exits?.map((e) => ({
-            direction: e.direction as any,
+            direction: assertEnumValue(
+              e.direction,
+              DIRECTIONS,
+              `${areaId}/rooms.yml: room "${def.id}" exit direction`,
+            ),
             target: prefixId(areaId, e.target),
             portal: e.portal,
             requiredLevel: e.requiredLevel,
@@ -302,7 +307,11 @@ export class AreaManager {
         const npcDef: NpcDefinition = {
           name: def.name,
           description: def.description,
-          behavior: def.behavior as NpcBehavior,
+          behavior: assertEnumValue(
+            def.behavior,
+            NPC_BEHAVIORS,
+            `${areaId}/npcs.yml: NPC "${def.id}" behavior`,
+          ),
           level: def.level,
           attributes: def.attributes,
           dialogue: def.dialogue as NpcDefinition["dialogue"],
@@ -353,7 +362,11 @@ export class AreaManager {
           turnIn: q.turnIn ? prefixId(areaId, q.turnIn) : undefined,
           prerequisites: q.prerequisites?.map((id) => prefixId(areaId, id)),
           objectives: q.objectives.map((o) => ({
-            type: o.type as any,
+            type: assertEnumValue(
+              o.type,
+              OBJECTIVE_TYPES,
+              `${areaId}/quests.yml: quest "${q.id}" objective type`,
+            ),
             description: o.description,
             target: o.target ? prefixId(areaId, o.target) : undefined,
             count: o.count ?? 1,

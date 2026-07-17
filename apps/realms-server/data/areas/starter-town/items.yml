@@ -8,7 +8,7 @@ definitions:
     description: >
       A battered iron sword with a pitted blade and worn leather grip.
       It's seen better days, but it still has an edge.
-    weight: 3
+    weight: 30
     value: 5
     rarity: common
     levelRequired: 1
@@ -24,7 +24,7 @@ definitions:
     description: >
       A round wooden shield reinforced with iron bands. Splintered around
       the edges but still serviceable for blocking blows.
-    weight: 4
+    weight: 40
     value: 8
     rarity: common
     levelRequired: 1
@@ -40,7 +40,7 @@ definitions:
     description: >
       A simple leather skullcap lined with wool. Offers modest protection
       against glancing blows.
-    weight: 1
+    weight: 10
     value: 3
     rarity: common
     levelRequired: 1
@@ -55,7 +55,7 @@ definitions:
     description: >
       A small glass vial filled with a bubbling red liquid. It tastes
       awful but mends wounds quickly.
-    weight: 0.5
+    weight: 5
     value: 15
     rarity: common
     stackable: true
@@ -71,7 +71,7 @@ definitions:
     description: >
       A glass vial containing a shimmering blue liquid. It crackles faintly
       with arcane energy.
-    weight: 0.5
+    weight: 5
     value: 20
     rarity: common
     stackable: true
@@ -87,7 +87,7 @@ definitions:
     description: >
       A wooden shaft wrapped in oil-soaked rags. When lit, it provides
       a flickering circle of warm light.
-    weight: 1
+    weight: 10
     value: 1
     rarity: common
     stackable: true
@@ -101,7 +101,7 @@ definitions:
     name: Loaf of Bread
     type: consumable
     description: A crusty loaf of fresh bread, still slightly warm.
-    weight: 0.5
+    weight: 5
     value: 2
     rarity: common
     stackable: true
@@ -117,7 +117,7 @@ definitions:
     description: >
       A plain copper ring, slightly green with age. It hums faintly
       when held up to the light.
-    weight: 0.1
+    weight: 1
     value: 12
     rarity: uncommon
     levelRequired: 1
@@ -132,7 +132,7 @@ definitions:
     description: >
       A short, well-balanced dagger with a narrow blade. Good for quick
       strikes and easy to conceal.
-    weight: 1
+    weight: 10
     value: 10
     rarity: common
     levelRequired: 1
@@ -162,7 +162,7 @@ definitions:
     description: >
       A heavy iron key with an ornate bow. Whatever lock it opens must
       be ancient.
-    weight: 0.1
+    weight: 1
     value: 0
     rarity: uncommon
     properties:
