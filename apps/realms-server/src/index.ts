@@ -31,6 +31,7 @@ import type { CharacterProfile } from "@realms/lexicons";
 import { OAuthCallbackError } from "@atproto/oauth-client-node";
 import { validateCreateCharacterInput } from "./create-character.js";
 import { resolveClientIp } from "./client-ip.js";
+import { MAX_CHAT_MESSAGE_LENGTH } from "./commands/social.js";
 
 const config = loadConfig(decodeURIComponent(new URL("../data", import.meta.url).pathname));
 
@@ -827,8 +828,9 @@ const server = Bun.serve<SessionData>({
           if (!body.senderName || !body.recipientName || !body.message || !body.sourceServer) {
             return Response.json({ delivered: false, reason: "Missing fields" }, { status: 400 });
           }
-          // Validate message length
-          if (body.message.length > 1000 || body.senderName.length > 100) {
+          // Validate message length (consistent with the chat lexicon / the
+          // cap applied to locally originated chat).
+          if (body.message.length > MAX_CHAT_MESSAGE_LENGTH || body.senderName.length > 100) {
             return Response.json({ delivered: false, reason: "Message too long" }, { status: 400 });
           }
           // Verify source server is a known federated server
