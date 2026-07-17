@@ -2,6 +2,12 @@
 # This defines the attributes, classes, races, and formulas for this server.
 # Servers can modify this file or create entirely different systems.
 
+# Item weights are stored as integers because atproto's data model has no float
+# type. weightScale is the divisor applied when weights are displayed: with
+# weightScale: 10, a stored weight of 5 shows as 0.5 (i.e. weights are authored
+# in tenths of a unit). Set to 1 if you'd rather author weights as whole units.
+weightScale: 10
+
 attributes:
   str:
     name: Strength

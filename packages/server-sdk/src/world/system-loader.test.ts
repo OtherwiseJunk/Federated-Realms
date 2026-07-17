@@ -39,6 +39,16 @@ attributes:
     expect(system.formulas.maxHp.expression).toBe("20 + (level - 1) * 8 + floor(con / 2)");
   });
 
+  test("loads weightScale, defaulting to 1 when omitted", async () => {
+    const declared = await loadGameSystem(
+      writeSystem("weightScale: 10\nattributes:\n  con:\n    name: Con\n"),
+    );
+    expect(declared.weightScale).toBe(10);
+
+    const defaulted = await loadGameSystem(writeSystem("attributes:\n  con:\n    name: Con\n"));
+    expect(defaulted.weightScale).toBe(1);
+  });
+
   test("keeps formulas defined in the system YAML", async () => {
     const dataPath = writeSystem(`
 formulas:

@@ -21,6 +21,7 @@ interface SystemYaml {
   equipSlots?: Record<string, EquipSlotDef>;
   itemTypes?: Record<string, ItemTypeDef>;
   spells?: Record<string, SpellDef>;
+  weightScale?: number;
 }
 
 export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
@@ -43,6 +44,9 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     equipSlots: raw.equipSlots ?? {},
     itemTypes: raw.itemTypes ?? {},
     spells: raw.spells ?? {},
+    // Item weights are stored as integers in 1/weightScale units (atproto has
+    // no float type); display divides by this. Defaults to 1 (whole units).
+    weightScale: raw.weightScale ?? 1,
   };
 
   // Spell effect/target are open lexicon enums, so a typo would otherwise load a

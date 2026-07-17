@@ -7,7 +7,7 @@ definitions:
     description: >
       A twisted wooden staff carved from a dark forest oak. Faint green
       runes are etched into the bark, pulsing dimly with residual magic.
-    weight: 3
+    weight: 30
     value: 18
     rarity: uncommon
     levelRequired: 2
@@ -24,7 +24,7 @@ definitions:
     description: >
       A bundle of surprisingly strong silk harvested from forest spiders.
       Weavers and alchemists prize it equally.
-    weight: 0.2
+    weight: 2
     value: 8
     rarity: uncommon
     stackable: true
@@ -39,7 +39,7 @@ definitions:
     description: >
       A plump mushroom that emits a soft blue-green glow. It smells
       earthy and slightly sweet. Alchemists use them in healing brews.
-    weight: 0.2
+    weight: 2
     value: 5
     rarity: common
     stackable: true
@@ -55,7 +55,7 @@ definitions:
     type: material
     description: >
       A curved fang dripping with a sickly green venom. Handle with care.
-    weight: 0.1
+    weight: 1
     value: 12
     rarity: uncommon
     stackable: true
@@ -71,7 +71,7 @@ definitions:
     description: >
       A dark green cloak woven with leaves and bark fragments. It blends
       remarkably well with the forest surroundings despite its worn state.
-    weight: 2
+    weight: 20
     value: 15
     rarity: uncommon
     levelRequired: 2
@@ -87,7 +87,7 @@ definitions:
     description: >
       A murky brown liquid in a clay flask. It tastes like dirt and
       vinegar but neutralizes most common poisons.
-    weight: 0.5
+    weight: 5
     value: 10
     rarity: common
     stackable: true
@@ -102,7 +102,7 @@ definitions:
     description: >
       A coarse grey pelt stripped from a forest wolf. It's still warm and
       smells of pine and musk. Useful for crafting and lining winter gear.
-    weight: 1
+    weight: 10
     value: 10
     rarity: common
     stackable: true
@@ -117,7 +117,7 @@ definitions:
     description: >
       Crude bandages woven from spider silk. Tougher than linen and surprisingly
       absorbent. They sting going on, but wounds close faster.
-    weight: 0.2
+    weight: 2
     value: 12
     rarity: common
     stackable: true
@@ -133,7 +133,7 @@ definitions:
     description: >
       A hearty stew of wolf meat and luminous mushrooms, slow-cooked over a
       campfire. Rich and gamey, it fills you with warmth and vitality.
-    weight: 0.5
+    weight: 5
     value: 20
     rarity: uncommon
     stackable: true
