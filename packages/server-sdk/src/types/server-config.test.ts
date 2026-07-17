@@ -97,6 +97,25 @@ describe("loadConfig", () => {
     expect(config.atproto.publicUrl).toBe("https://game.example.com");
   });
 
+  test("trustedProxyHops defaults to 1 and reads TRUSTED_PROXY_HOPS", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    expect(loadConfig().trustedProxyHops).toBe(1);
+
+    process.env.TRUSTED_PROXY_HOPS = "2";
+    expect(loadConfig().trustedProxyHops).toBe(2);
+
+    process.env.TRUSTED_PROXY_HOPS = "0";
+    expect(loadConfig().trustedProxyHops).toBe(0);
+  });
+
+  test("trustedProxyHops falls back to 1 for invalid or negative values", () => {
+    process.env.TRUSTED_PROXY_HOPS = "not-a-number";
+    expect(loadConfig().trustedProxyHops).toBe(1);
+
+    process.env.TRUSTED_PROXY_HOPS = "-3";
+    expect(loadConfig().trustedProxyHops).toBe(1);
+  });
+
   test("dataDir defaults to ./.state and reads DATA_DIR", () => {
     delete process.env.DATA_DIR;
     expect(loadConfig().dataDir).toBe("./.state");

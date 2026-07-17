@@ -30,6 +30,7 @@ import {
 import type { CharacterProfile } from "@realms/lexicons";
 import { OAuthCallbackError } from "@atproto/oauth-client-node";
 import { validateCreateCharacterInput } from "./create-character.js";
+import { resolveClientIp } from "./client-ip.js";
 
 const config = loadConfig(decodeURIComponent(new URL("../data", import.meta.url).pathname));
 
@@ -475,7 +476,13 @@ const server = Bun.serve<SessionData>({
       // Start OAuth flow. handle=<user handle> for login, signup=true to
       // register on this server's own PDS (its hosted page handles captcha).
       if (url.pathname === "/auth/login" && req.method === "GET") {
-        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        // Derive the rate-limit key from a trusted hop in X-Forwarded-For so a
+        // client can't defeat the limiter by spoofing the header (see #21).
+        const clientIp = resolveClientIp(
+          req.headers.get("x-forwarded-for"),
+          config.trustedProxyHops,
+          server.requestIP(req)?.address,
+        );
         if (!authLimiter.check(clientIp)) {
           return Response.json(
             { error: "Too many login attempts. Try again later." },
