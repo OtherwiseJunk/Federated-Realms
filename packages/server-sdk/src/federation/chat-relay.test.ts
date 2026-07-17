@@ -2,7 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { ChatRelayService } from "./chat-relay.js";
 
 function makeRelay(): ChatRelayService {
-  return new ChatRelayService({} as never, {} as never, {} as never);
+  return new ChatRelayService({} as never, {} as never);
 }
 
 function limitsOf(relay: ChatRelayService): Map<string, number[]> {
@@ -44,5 +44,22 @@ describe("ChatRelayService rate limiting", () => {
 
     expect(limitsOf(relay).has("stale-session")).toBe(false);
     expect(limitsOf(relay).has("active-session")).toBe(true);
+  });
+});
+
+describe("ChatRelayService relayMessage", () => {
+  test("returns only delivered:false when no known servers can locate the player", async () => {
+    // With no federated servers there is no online target and no offline
+    // mailbox fallback — the result carries just the delivered flag (#55).
+    const relay = new ChatRelayService(
+      {} as never,
+      {
+        getKnownServers: () => new Map(),
+      } as never,
+    );
+
+    const result = await relay.relayMessage({} as never, "SomePlayer", "hello");
+
+    expect(result).toEqual({ delivered: false });
   });
 });

@@ -30,6 +30,8 @@ import {
 import type { CharacterProfile } from "@realms/lexicons";
 import { OAuthCallbackError } from "@atproto/oauth-client-node";
 import { validateCreateCharacterInput } from "./create-character.js";
+import { resolveClientIp } from "./client-ip.js";
+import { MAX_CHAT_MESSAGE_LENGTH } from "./commands/social.js";
 
 const config = loadConfig(decodeURIComponent(new URL("../data", import.meta.url).pathname));
 
@@ -139,7 +141,7 @@ if (!DEV_MODE) {
       portalHandler.setFederationManager(federation);
 
       // Cross-server chat relay
-      chatRelay = new ChatRelayService(serverIdentity, federation, sessions);
+      chatRelay = new ChatRelayService(serverIdentity, federation);
     } catch (err) {
       console.warn(
         "   Server identity/federation initialization failed:",
@@ -475,7 +477,13 @@ const server = Bun.serve<SessionData>({
       // Start OAuth flow. handle=<user handle> for login, signup=true to
       // register on this server's own PDS (its hosted page handles captcha).
       if (url.pathname === "/auth/login" && req.method === "GET") {
-        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        // Derive the rate-limit key from a trusted hop in X-Forwarded-For so a
+        // client can't defeat the limiter by spoofing the header (see #21).
+        const clientIp = resolveClientIp(
+          req.headers.get("x-forwarded-for"),
+          config.trustedProxyHops,
+          server.requestIP(req)?.address,
+        );
         if (!authLimiter.check(clientIp)) {
           return Response.json(
             { error: "Too many login attempts. Try again later." },
@@ -820,8 +828,9 @@ const server = Bun.serve<SessionData>({
           if (!body.senderName || !body.recipientName || !body.message || !body.sourceServer) {
             return Response.json({ delivered: false, reason: "Missing fields" }, { status: 400 });
           }
-          // Validate message length
-          if (body.message.length > 1000 || body.senderName.length > 100) {
+          // Validate message length (consistent with the chat lexicon / the
+          // cap applied to locally originated chat).
+          if (body.message.length > MAX_CHAT_MESSAGE_LENGTH || body.senderName.length > 100) {
             return Response.json({ delivered: false, reason: "Message too long" }, { status: 400 });
           }
           // Verify source server is a known federated server
@@ -994,16 +1003,6 @@ const server = Bun.serve<SessionData>({
       if (ctx) {
         sendRoomState(session, ctx);
         sendMapUpdate(session, ctx);
-      }
-
-      // Deliver pending offline messages
-      if (chatRelay) {
-        chatRelay.deliverPendingMessages(session).catch((err) => {
-          console.warn(
-            `   Failed to deliver mailbox for ${session.name}:`,
-            err instanceof Error ? err.message : err,
-          );
-        });
       }
 
       // Check for pending portal adaptation (foreign class/race)

@@ -3,6 +3,18 @@ import { encodeMessage } from "@realms/protocol";
 import type { CommandContext } from "./index.js";
 import { sendNarrative } from "./index.js";
 
+/**
+ * Server-side chat message length cap, matching the chat lexicon's `message`
+ * maxLength. Enforced on every server-handled chat path so a client can't send
+ * arbitrarily long messages regardless of any client-side limit (see #26).
+ */
+export const MAX_CHAT_MESSAGE_LENGTH = 2000;
+
+/** Clamp a chat message to the server-side length cap. */
+export function capChatMessage(message: string, max = MAX_CHAT_MESSAGE_LENGTH): string {
+  return message.length > max ? message.slice(0, max) : message;
+}
+
 export function handleTell(cmd: ParsedCommand, ctx: CommandContext): void {
   const { session, sessions, chatRelay } = ctx;
 
@@ -12,7 +24,7 @@ export function handleTell(cmd: ParsedCommand, ctx: CommandContext): void {
   }
 
   const targetName = cmd.args[0];
-  const message = cmd.args.slice(1).join(" ");
+  const message = capChatMessage(cmd.args.slice(1).join(" "));
 
   if (targetName.toLowerCase() === session.name.toLowerCase()) {
     sendNarrative(session, "Talking to yourself?", "error");
@@ -45,12 +57,6 @@ export function handleTell(cmd: ParsedCommand, ctx: CommandContext): void {
     chatRelay.relayMessage(session, targetName, message).then((result) => {
       if (result.delivered) {
         sendNarrative(session, `You tell ${targetName}: ${message}`, "chat");
-      } else if (result.offline) {
-        sendNarrative(
-          session,
-          `${targetName} is offline. Your message has been saved for delivery.`,
-          "info",
-        );
       } else {
         sendNarrative(session, `No player named '${targetName}' could be found.`, "error");
       }
@@ -66,7 +72,7 @@ export function handleSocial(cmd: ParsedCommand, ctx: CommandContext): void {
 
   switch (cmd.verb) {
     case "say": {
-      const message = cmd.args.join(" ");
+      const message = capChatMessage(cmd.args.join(" "));
       if (!message) {
         sendNarrative(session, "Say what?", "error");
         return;
@@ -92,7 +98,7 @@ export function handleSocial(cmd: ParsedCommand, ctx: CommandContext): void {
     }
 
     case "shout": {
-      const message = cmd.args.join(" ");
+      const message = capChatMessage(cmd.args.join(" "));
       if (!message) {
         sendNarrative(session, "Shout what?", "error");
         return;
@@ -128,7 +134,7 @@ export function handleSocial(cmd: ParsedCommand, ctx: CommandContext): void {
         return;
       }
       const targetName = cmd.args[0];
-      const message = cmd.args.slice(1).join(" ");
+      const message = capChatMessage(cmd.args.slice(1).join(" "));
       const target = sessions.findByName(targetName);
       if (!target) {
         sendNarrative(session, `Player '${targetName}' is not online.`, "error");
