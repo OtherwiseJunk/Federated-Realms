@@ -5,7 +5,44 @@ import type { WorldManager } from "../world/world-manager.js";
 import type { FederationConfig, AtProtoConfig } from "../types/server-config.js";
 import type { AdaptationRequired } from "@realms/protocol";
 import type { FederationManager } from "./federation-manager.js";
-import { buildAttributes, computeDerivedStats } from "@realms/common";
+import {
+  buildAttributes,
+  computeDerivedStats,
+  validateCharacterName,
+  handleLocalPart,
+} from "@realms/common";
+
+/**
+ * Resolve a safe display name for an incoming federated character.
+ *
+ * Names a player sets at signup pass through `validateCharacterName` (#74),
+ * which strips control/bidi/zero-width/tag characters and blocks impersonation
+ * of system actors. A character transferred in from another server carries its
+ * `name` straight onto our render surfaces (room lists, tells, the Bluesky feed)
+ * without that check, so a hostile or careless remote can inject exactly what
+ * signup rejects. Addressing is by DID/FQDN (#92), so the display name is
+ * cosmetic: on failure we substitute a safe placeholder rather than rejecting
+ * the whole transfer (#93).
+ *
+ * Placeholder preference: a valid handle local part when one is available (a
+ * `did:` subject yields "" from handleLocalPart), else a stable, obviously
+ * non-impersonating name derived from the subject id.
+ */
+export function resolveFederatedName(rawName: unknown, subjectId: string): string {
+  if (typeof rawName === "string") {
+    const validated = validateCharacterName(rawName);
+    if (validated.ok) return validated.name;
+  }
+
+  const local = handleLocalPart(subjectId);
+  if (local) {
+    const validatedLocal = validateCharacterName(local);
+    if (validatedLocal.ok) return validatedLocal.name;
+  }
+
+  const suffix = subjectId.replace(/[^a-zA-Z0-9]/g, "").slice(-6);
+  return suffix ? `Traveler-${suffix}` : "Traveler";
+}
 
 export interface TransferInput {
   token: string;
@@ -129,6 +166,11 @@ export class TransferHandler {
     };
 
     const trustedCharacter = this.applyTrustPolicy(character, payload.iss);
+
+    // 6b. Sanitize the incoming display name. Foreign names bypass the signup
+    // validator, so run them through it here (the transfer trust boundary) and
+    // substitute a safe placeholder on failure — the name is cosmetic (#93).
+    trustedCharacter.name = resolveFederatedName(trustedCharacter.name, payload.sub);
 
     // 7. Check level cap
     if (trustedCharacter.level > this.federationConfig.maxAcceptedLevel) {

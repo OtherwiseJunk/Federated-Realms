@@ -11,6 +11,13 @@ import type {
   SpellDef,
 } from "@realms/lexicons";
 
+// Attributes the combat engine reads with no `?? 10` fallback (since #88), so a
+// system that omits one yields a silent NaN in combat rather than a loud
+// failure. `str`/`dex` are read directly in combat-engine.ts (attack/defense
+// modifiers); `con` in computeNpcMaxHp (npc.ts, NPC hit points). Asserted at the
+// load boundary (issue #95), in the same spirit as #86's enum validation.
+const CORE_COMBAT_ATTRIBUTES = ["str", "dex", "con"] as const;
+
 // Every section is optional: a system.yml may omit any of them, and each is
 // resolved to `{}` at the single `?? {}` point below.
 interface SystemYaml {
@@ -49,11 +56,29 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     weightScale: raw.weightScale ?? 1,
   };
 
+  // Combat reads these attributes directly with no fallback (since #88), so a
+  // system that omits one turns every combat modifier into a silent NaN. Fail
+  // the boot naming the missing attribute (issue #95).
+  for (const attr of CORE_COMBAT_ATTRIBUTES) {
+    if (!Object.hasOwn(system.attributes, attr)) {
+      throw new Error(
+        `system.yml: core combat attribute "${attr}" is not declared in attributes (required by the combat engine)`,
+      );
+    }
+  }
+
   // Spell effect/target are open lexicon enums, so a typo would otherwise load a
-  // silently broken spell. Fail the boot with the spell id for context.
+  // silently broken spell. A spell whose casting attribute isn't declared reads
+  // casterAttrs[undefined] → NaN just as silently. Fail the boot with the spell
+  // id for context.
   for (const [id, spell] of Object.entries(system.spells)) {
     assertEnumValue(spell.effect, SPELL_EFFECTS, `system.yml: spell "${id}" effect`);
     assertEnumValue(spell.target, SPELL_TARGETS, `system.yml: spell "${id}" target`);
+    if (!Object.hasOwn(system.attributes, spell.attribute)) {
+      throw new Error(
+        `system.yml: spell "${id}" references undeclared attribute "${spell.attribute}"`,
+      );
+    }
   }
 
   const attrCount = Object.keys(system.attributes).length;
