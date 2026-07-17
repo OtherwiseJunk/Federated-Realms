@@ -57,12 +57,6 @@ export function handleTell(cmd: ParsedCommand, ctx: CommandContext): void {
     chatRelay.relayMessage(session, targetName, message).then((result) => {
       if (result.delivered) {
         sendNarrative(session, `You tell ${targetName}: ${message}`, "chat");
-      } else if (result.offline) {
-        sendNarrative(
-          session,
-          `${targetName} is offline. Your message has been saved for delivery.`,
-          "info",
-        );
       } else {
         sendNarrative(session, `No player named '${targetName}' could be found.`, "error");
       }

@@ -141,7 +141,7 @@ if (!DEV_MODE) {
       portalHandler.setFederationManager(federation);
 
       // Cross-server chat relay
-      chatRelay = new ChatRelayService(serverIdentity, federation, sessions);
+      chatRelay = new ChatRelayService(serverIdentity, federation);
     } catch (err) {
       console.warn(
         "   Server identity/federation initialization failed:",
@@ -1003,16 +1003,6 @@ const server = Bun.serve<SessionData>({
       if (ctx) {
         sendRoomState(session, ctx);
         sendMapUpdate(session, ctx);
-      }
-
-      // Deliver pending offline messages
-      if (chatRelay) {
-        chatRelay.deliverPendingMessages(session).catch((err) => {
-          console.warn(
-            `   Failed to deliver mailbox for ${session.name}:`,
-            err instanceof Error ? err.message : err,
-          );
-        });
       }
 
       // Check for pending portal adaptation (foreign class/race)
