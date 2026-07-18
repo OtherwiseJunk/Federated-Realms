@@ -1,9 +1,13 @@
 import { AtpAgent } from "@atproto/api";
 import { Secp256k1Keypair } from "@atproto/crypto";
 import { verifySig } from "@atproto/crypto/dist/secp256k1/operations";
-import * as jose from "jose";
 import type { AtProtoConfig } from "../types/server-config.js";
 import { NSID } from "@realms/lexicons";
+
+function b64url(data: Uint8Array | string): string {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  return Buffer.from(bytes).toString("base64url");
+}
 
 export interface TransferPayload {
   iss: string;
@@ -56,16 +60,15 @@ export class ServerIdentity {
   did = "";
   agent!: AtpAgent;
   // Optional by design: initialize() catches signing-key init failure and
-  // continues in a degraded mode where these stay undefined. canSign reflects
+  // continues in a degraded mode where it stays undefined. canSign reflects
   // that honestly so callers can gate instead of hitting a runtime throw.
   private signingKey?: Secp256k1Keypair;
-  private jwtPrivateKey?: CryptoKey;
 
   /**
-   * Whether this identity can produce attestation signatures. False when the
-   * signing key failed to initialize — the server still runs, but federation
-   * signing is disabled. Transfer-JWT signing additionally requires the JWT
-   * key; signTransferToken throws if that is missing.
+   * Whether this identity can produce signatures — both attestations and
+   * transfer tokens, which are signed with the same secp256k1 signing key. False
+   * when the signing key failed to initialize: the server still runs, but
+   * federation signing is disabled.
    */
   get canSign(): boolean {
     return this.signingKey !== undefined;
@@ -78,15 +81,6 @@ export class ServerIdentity {
       );
     }
     return this.signingKey;
-  }
-
-  private requireJwtKey(): CryptoKey {
-    if (!this.jwtPrivateKey) {
-      throw new Error(
-        "Server JWT signing key is unavailable; federation signing is disabled on this server",
-      );
-    }
-    return this.jwtPrivateKey;
   }
 
   async initialize(
@@ -156,28 +150,16 @@ export class ServerIdentity {
     await this.publishServerRecord(config, serverName, serverDescription);
   }
 
-  private async initSigningKey(): Promise<void> {
+  async initSigningKey(): Promise<void> {
     this.signingKey = await Secp256k1Keypair.create({ exportable: true });
-    await this.initJwtKey();
   }
 
-  private async initJwtKey(): Promise<void> {
-    const signingKey = this.requireSigningKey();
-    const rawKey = await signingKey.export();
-    this.jwtPrivateKey = (await jose.importJWK(
-      {
-        kty: "EC",
-        crv: "secp256k1",
-        d: Buffer.from(rawKey).toString("base64url"),
-        x: Buffer.from(signingKey.publicKeyBytes().slice(1, 33)).toString("base64url"),
-        y: Buffer.from(signingKey.publicKeyBytes().slice(33, 65)).toString("base64url"),
-      },
-      "ES256K",
-    )) as CryptoKey;
-  }
-
+  /**
+   * @deprecated Equivalent to {@link initSigningKey} now that transfer tokens are
+   * signed with the secp256k1 key directly and there is no separate JWT key.
+   */
   async initSigningKeyOnly(): Promise<void> {
-    this.signingKey = await Secp256k1Keypair.create({ exportable: true });
+    await this.initSigningKey();
   }
 
   private async publishServerRecord(
@@ -205,26 +187,36 @@ export class ServerIdentity {
     }
   }
 
-  signTransferToken(payload: TransferPayload): Promise<string> {
-    const jwtKey = this.requireJwtKey();
-    return new jose.SignJWT({
+  async signTransferToken(payload: TransferPayload): Promise<string> {
+    const key = this.requireSigningKey();
+    const header = { alg: "ES256K", typ: "JWT" };
+    const claims = {
+      iss: payload.iss,
+      sub: payload.sub,
+      aud: payload.aud,
+      iat: payload.iat,
+      exp: payload.exp,
       characterHash: payload.characterHash,
       targetRoom: payload.targetRoom,
-    })
-      .setProtectedHeader({ alg: "ES256K" })
-      .setIssuer(payload.iss)
-      .setSubject(payload.sub)
-      .setAudience(payload.aud)
-      .setIssuedAt(payload.iat)
-      .setExpirationTime(payload.exp)
-      .sign(jwtKey);
+    };
+    // Compact-JWS over the secp256k1 signing key (the same key attestations use).
+    // We sign natively rather than via jose/WebCrypto, which doesn't support
+    // secp256k1 (issue #100). The signature is atproto's 64-byte low-S r||s,
+    // which is exactly the ES256K JWS signature encoding.
+    const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
+    const sig = await key.sign(new TextEncoder().encode(signingInput));
+    return `${signingInput}.${b64url(sig)}`;
   }
 
   async verifyTransferToken(
     jwt: string,
     expectedAudience: string,
   ): Promise<TransferPayload | null> {
-    return this.verifyTransferTokenWithKey(jwt, expectedAudience, this.requireJwtKey());
+    return this.verifyTransferTokenWithKey(
+      jwt,
+      expectedAudience,
+      this.requireSigningKey().publicKeyBytes(),
+    );
   }
 
   async verifyRemoteTransferToken(
@@ -232,32 +224,39 @@ export class ServerIdentity {
     expectedAudience: string,
     publicKeyBytes: Uint8Array,
   ): Promise<TransferPayload | null> {
-    try {
-      const jwtPublicKey = await this.importRemotePublicKey(publicKeyBytes);
-      return this.verifyTransferTokenWithKey(jwt, expectedAudience, jwtPublicKey);
-    } catch {
-      return null;
-    }
+    return this.verifyTransferTokenWithKey(jwt, expectedAudience, publicKeyBytes);
   }
 
   private async verifyTransferTokenWithKey(
     jwt: string,
     expectedAudience: string,
-    key: CryptoKey,
+    publicKeyBytes: Uint8Array,
   ): Promise<TransferPayload | null> {
     try {
-      const { payload } = await jose.jwtVerify(jwt, key, {
-        audience: expectedAudience,
-      });
+      const parts = jwt.split(".");
+      if (parts.length !== 3) return null;
+      const [headerB64, payloadB64, sigB64] = parts;
+
+      const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+      const sig = new Uint8Array(Buffer.from(sigB64, "base64url"));
+      if (!(await verifySig(publicKeyBytes, signingInput, sig))) return null;
+
+      const claims = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as Record<
+        string,
+        unknown
+      >;
+      const now = Math.floor(Date.now() / 1000);
+      if (typeof claims.exp === "number" && now >= claims.exp) return null;
+      if (claims.aud !== expectedAudience) return null;
 
       return {
-        iss: payload.iss ?? "",
-        sub: payload.sub ?? "",
-        aud: typeof payload.aud === "string" ? payload.aud : (payload.aud?.[0] ?? ""),
-        iat: payload.iat ?? 0,
-        exp: payload.exp ?? 0,
-        characterHash: (payload as Record<string, unknown>).characterHash as string,
-        targetRoom: (payload as Record<string, unknown>).targetRoom as string,
+        iss: typeof claims.iss === "string" ? claims.iss : "",
+        sub: typeof claims.sub === "string" ? claims.sub : "",
+        aud: typeof claims.aud === "string" ? claims.aud : "",
+        iat: typeof claims.iat === "number" ? claims.iat : 0,
+        exp: typeof claims.exp === "number" ? claims.exp : 0,
+        characterHash: claims.characterHash as string,
+        targetRoom: claims.targetRoom as string,
       };
     } catch {
       return null;
@@ -304,21 +303,6 @@ export class ServerIdentity {
     } catch {
       return false;
     }
-  }
-
-  private async importRemotePublicKey(publicKeyBytes: Uint8Array): Promise<CryptoKey> {
-    const x = publicKeyBytes.slice(1, 33);
-    const y = publicKeyBytes.slice(33, 65);
-
-    return (await jose.importJWK(
-      {
-        kty: "EC",
-        crv: "secp256k1",
-        x: Buffer.from(x).toString("base64url"),
-        y: Buffer.from(y).toString("base64url"),
-      },
-      "ES256K",
-    )) as CryptoKey;
   }
 
   getPublicKeyBytes(): Uint8Array {
