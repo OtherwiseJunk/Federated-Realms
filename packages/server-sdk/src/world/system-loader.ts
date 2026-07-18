@@ -24,7 +24,10 @@ interface SystemYaml {
   weightScale?: number;
 }
 
-export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
+export async function loadGameSystem(
+  dataPath: string,
+  requiredAttributes: readonly string[] = [],
+): Promise<GameSystem> {
   const file = Bun.file(`${dataPath}/system.yml`);
   if (!(await file.exists())) {
     throw new Error(`Game system file not found: ${dataPath}/system.yml`);
@@ -49,11 +52,31 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     weightScale: raw.weightScale ?? 1,
   };
 
+  // The combat rules read certain attributes directly with no fallback (since
+  // #88), so a system that omits one turns every combat modifier into a silent
+  // NaN. The SDK loader is system-agnostic and can't assume any particular
+  // attribute names, so the caller passes the set its rules require; fail the
+  // boot naming the missing one (issue #95).
+  for (const attr of requiredAttributes) {
+    if (!Object.hasOwn(system.attributes, attr)) {
+      throw new Error(
+        `system.yml: required combat attribute "${attr}" is not declared in attributes`,
+      );
+    }
+  }
+
   // Spell effect/target are open lexicon enums, so a typo would otherwise load a
-  // silently broken spell. Fail the boot with the spell id for context.
+  // silently broken spell. A spell whose casting attribute isn't declared reads
+  // casterAttrs[undefined] → NaN just as silently. Fail the boot with the spell
+  // id for context.
   for (const [id, spell] of Object.entries(system.spells)) {
     assertEnumValue(spell.effect, SPELL_EFFECTS, `system.yml: spell "${id}" effect`);
     assertEnumValue(spell.target, SPELL_TARGETS, `system.yml: spell "${id}" target`);
+    if (!Object.hasOwn(system.attributes, spell.attribute)) {
+      throw new Error(
+        `system.yml: spell "${id}" references undeclared attribute "${spell.attribute}"`,
+      );
+    }
   }
 
   const attrCount = Object.keys(system.attributes).length;

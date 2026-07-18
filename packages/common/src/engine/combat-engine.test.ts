@@ -175,6 +175,14 @@ describe("equipment helpers", () => {
     expect(getEquipSlot(config, "accessory", {}, ["head"])).toBe("ring");
   });
 
+  test("getEquipSlot rejects an explicit slot the item type can't occupy", () => {
+    // Accessory is restricted to "ring"; an explicit slot of "head" is a valid global
+    // slot but not allowed for accessory, so it's ignored and we fall back to defaultSlot.
+    expect(getEquipSlot(config, "accessory", { slot: "head" }, [])).toBe("ring");
+    // Armor can't go in mainHand; the explicit slot is ignored, falling back to body default.
+    expect(getEquipSlot(config, "armor", { slot: "mainHand" }, [])).toBe("body");
+  });
+
   test("buildSlotAliases maps all aliases", () => {
     const aliases = buildSlotAliases(config);
     expect(aliases["weapon"]).toBe("mainHand");

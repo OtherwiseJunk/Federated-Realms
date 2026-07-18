@@ -46,6 +46,13 @@ export interface ServerConfig {
   dataPath: string;
   /** Directory for mutable server state (SQLite DB). Distinct from dataPath (world data). */
   dataDir: string;
+  /**
+   * Number of trusted reverse proxies in front of this server. Used to derive
+   * the real client IP from `X-Forwarded-For` (counting hops from the right)
+   * for rate-limit keys, resisting header spoofing. Defaults to 1 (single host
+   * nginx). 0 disables trusting the header entirely.
+   */
+  trustedProxyHops: number;
   bluesky: BlueskyConfig;
   atproto: AtProtoConfig;
   federation: FederationConfig;
@@ -61,6 +68,7 @@ export function loadConfig(defaultDataPath?: string): ServerConfig {
     defaultSpawnRoom: process.env.DEFAULT_SPAWN ?? "starter-town:town-square",
     dataPath: process.env.DATA_PATH ?? defaultDataPath ?? "./data",
     dataDir: process.env.DATA_DIR ?? "./.state",
+    trustedProxyHops: parseTrustedProxyHops(process.env.TRUSTED_PROXY_HOPS),
     bluesky: {
       enabled: process.env.BSKY_ENABLED === "true",
       identifier: process.env.BSKY_IDENTIFIER ?? "",
@@ -91,6 +99,24 @@ export function loadConfig(defaultDataPath?: string): ServerConfig {
       maxAcceptedLevel: parseInt(process.env.MAX_ACCEPTED_LEVEL ?? "50", 10),
     },
   };
+}
+
+/**
+ * Parse TRUSTED_PROXY_HOPS. Defaults to 1 (single host nginx). Non-numeric or
+ * negative values fall back to the safe default of 1; 0 is honored (disables
+ * trusting X-Forwarded-For).
+ *
+ * SECURITY: this is only sound if the app sits behind exactly this many trusted
+ * reverse proxies AND is not reachable directly. A client that can reach the app
+ * without traversing those proxies can forge X-Forwarded-For and spoof its
+ * rate-limit identity, defeating the limiter. Set to 0 (use the socket address,
+ * ignore X-Forwarded-For) if the app is directly exposed.
+ */
+function parseTrustedProxyHops(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 1;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return 1;
+  return n;
 }
 
 function parsePostTypes(str: string): BlueskyPostType[] {

@@ -15,6 +15,27 @@ describe("loadGameSystem", () => {
     }
   });
 
+  // The loader now asserts the core combat attributes (str/dex/con) are declared,
+  // so every fixture that expects a successful (or spell-level) load must declare
+  // them. `int`/`wis` are included for spell casting attributes.
+  const CORE_ATTRS = `attributes:
+  str:
+    name: Strength
+    defaultValue: 10
+  dex:
+    name: Dexterity
+    defaultValue: 10
+  con:
+    name: Constitution
+    defaultValue: 10
+  int:
+    name: Intelligence
+    defaultValue: 10
+  wis:
+    name: Wisdom
+    defaultValue: 10
+`;
+
   function writeSystem(yaml: string): string {
     silenceLog = spyOn(console, "log").mockImplementation(() => {});
     const root = mkdtempSync(join(tmpdir(), "realms-system-"));
@@ -24,12 +45,7 @@ describe("loadGameSystem", () => {
   }
 
   test("fills missing derived-stat formulas with reference defaults", async () => {
-    const dataPath = writeSystem(`
-attributes:
-  con:
-    name: Constitution
-    defaultValue: 10
-`);
+    const dataPath = writeSystem(CORE_ATTRS);
 
     const system = await loadGameSystem(dataPath);
 
@@ -40,17 +56,15 @@ attributes:
   });
 
   test("loads weightScale, defaulting to 1 when omitted", async () => {
-    const declared = await loadGameSystem(
-      writeSystem("weightScale: 10\nattributes:\n  con:\n    name: Con\n"),
-    );
+    const declared = await loadGameSystem(writeSystem(`weightScale: 10\n${CORE_ATTRS}`));
     expect(declared.weightScale).toBe(10);
 
-    const defaulted = await loadGameSystem(writeSystem("attributes:\n  con:\n    name: Con\n"));
+    const defaulted = await loadGameSystem(writeSystem(CORE_ATTRS));
     expect(defaulted.weightScale).toBe(1);
   });
 
   test("keeps formulas defined in the system YAML", async () => {
-    const dataPath = writeSystem(`
+    const dataPath = writeSystem(`${CORE_ATTRS}
 formulas:
   maxHp:
     name: Max Hit Points
@@ -71,7 +85,7 @@ formulas:
     expect(system.formulas.maxAp).toBeDefined();
   });
 
-  const VALID_SPELL = `
+  const VALID_SPELL = `${CORE_ATTRS}
 spells:
   fireball:
     name: Fireball
@@ -90,13 +104,13 @@ spells:
   });
 
   test("loads a system whose sections are entirely omitted", async () => {
-    const system = await loadGameSystem(writeSystem("attributes:\n  con:\n    name: Con\n"));
+    const system = await loadGameSystem(writeSystem(CORE_ATTRS));
     expect(Object.keys(system.spells)).toHaveLength(0);
     expect(Object.keys(system.classes)).toHaveLength(0);
   });
 
   test("rejects a spell with an unknown effect, naming the spell", async () => {
-    const dataPath = writeSystem(`
+    const dataPath = writeSystem(`${CORE_ATTRS}
 spells:
   fireball:
     name: Fireball
@@ -112,7 +126,7 @@ spells:
   });
 
   test("rejects a spell with an unknown target, naming the spell", async () => {
-    const dataPath = writeSystem(`
+    const dataPath = writeSystem(`${CORE_ATTRS}
 spells:
   heal:
     name: Heal
@@ -125,5 +139,55 @@ spells:
 `);
     await expect(loadGameSystem(dataPath)).rejects.toThrow(/freind/);
     await expect(loadGameSystem(dataPath)).rejects.toThrow(/heal/);
+  });
+
+  test("rejects a system missing a caller-required combat attribute, naming it", async () => {
+    // Declares str/dex but omits con — combat would read attrs.con → NaN.
+    const dataPath = writeSystem(`attributes:
+  str:
+    name: Strength
+  dex:
+    name: Dexterity
+`);
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(/con/);
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(
+      /combat attribute/,
+    );
+  });
+
+  test("rejects a system that declares no attributes at all", async () => {
+    const dataPath = writeSystem("classes:\n  warrior:\n    name: Warrior\n");
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(/str/);
+  });
+
+  test("makes no attribute assumption when the caller passes no required set", async () => {
+    // A system with entirely non-standard attribute names loads fine — the SDK
+    // loader is system-agnostic; required attributes come from the caller's rules.
+    const system = await loadGameSystem(writeSystem("attributes:\n  might:\n    name: Might\n"));
+    expect(Object.keys(system.attributes)).toEqual(["might"]);
+  });
+
+  test("validates against whatever required set the caller passes", async () => {
+    const dataPath = writeSystem("attributes:\n  might:\n    name: Might\n");
+    await expect(loadGameSystem(dataPath, ["might"])).resolves.toBeDefined();
+    await expect(loadGameSystem(dataPath, ["reflexes"])).rejects.toThrow(/reflexes/);
+  });
+
+  test("rejects a spell referencing an undeclared attribute, naming the spell", async () => {
+    // Core attrs are present, but the spell casts off an attribute the system
+    // never declares — casterAttrs[spell.attribute] would be NaN.
+    const dataPath = writeSystem(`${CORE_ATTRS}
+spells:
+  mindblast:
+    name: Mind Blast
+    description: Psychic assault.
+    mpCost: 6
+    attribute: psi
+    effect: damage
+    power: 12
+    target: enemy
+`);
+    await expect(loadGameSystem(dataPath)).rejects.toThrow(/mindblast/);
+    await expect(loadGameSystem(dataPath)).rejects.toThrow(/psi/);
   });
 });

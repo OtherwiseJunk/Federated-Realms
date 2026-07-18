@@ -15,6 +15,13 @@ export interface EquipmentConfig {
 
 // ── Action Point Costs ──
 
+// Attributes the built-in combat rules read directly (attack/defense modifiers,
+// NPC HP) with no fallback. These are game-specific — a different ruleset would
+// reference its own attribute names — so a server passes this set to
+// `loadGameSystem` to validate its system declares them. When combat becomes
+// pluggable (Phase 1), this set moves with the injected rules.
+export const COMBAT_REQUIRED_ATTRIBUTES = ["str", "dex", "con"] as const;
+
 export const AP_COST = {
   attack: 2,
   defend: 1,
@@ -72,14 +79,19 @@ export function getEquipSlot(
   // Not equippable if the type isn't registered or isn't marked equippable
   if (!typeDef?.equippable) return null;
 
+  const validSlots = typeDef.equipSlots;
+
   // Priority 1: Explicit slot in properties
   if (properties?.slot && typeof properties.slot === "string") {
-    if (config.equipSlots[properties.slot]) return properties.slot;
+    const slot = properties.slot;
+    // Only honor an explicit slot the item type is actually allowed to occupy
+    if (config.equipSlots[slot] && (!validSlots || validSlots.includes(slot))) {
+      return slot;
+    }
   }
 
   // Priority 2: Tag matches a slot ID (e.g., tag "head" matches slot "head")
   if (tags) {
-    const validSlots = typeDef.equipSlots;
     for (const tag of tags) {
       if (config.equipSlots[tag]) {
         // If the item type restricts which slots it can go in, enforce that
