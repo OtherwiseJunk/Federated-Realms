@@ -15,6 +15,13 @@ export interface EquipmentConfig {
 
 // ── Action Point Costs ──
 
+// Attributes the built-in combat rules read directly (attack/defense modifiers,
+// NPC HP) with no fallback. These are game-specific — a different ruleset would
+// reference its own attribute names — so a server passes this set to
+// `loadGameSystem` to validate its system declares them. When combat becomes
+// pluggable (Phase 1), this set moves with the injected rules.
+export const COMBAT_REQUIRED_ATTRIBUTES = ["str", "dex", "con"] as const;
+
 export const AP_COST = {
   attack: 2,
   defend: 1,

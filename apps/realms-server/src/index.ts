@@ -18,7 +18,13 @@ import {
   ChatRelayService,
   RateLimiter,
 } from "@realms/server-sdk";
-import { parseCommand, buildAttributes, computeDerivedStats, xpToNextLevel } from "@realms/common";
+import {
+  parseCommand,
+  buildAttributes,
+  computeDerivedStats,
+  xpToNextLevel,
+  COMBAT_REQUIRED_ATTRIBUTES,
+} from "@realms/common";
 import { encodeMessage, decodeClientMessage, type ServerMessage } from "@realms/protocol";
 import {
   handleCommand,
@@ -45,7 +51,7 @@ setInterval(() => authTokens.purgeExpired(), 60 * 60_000); // hourly
 const authLimiter = new RateLimiter(10, 60_000); // 10 auth attempts per minute per IP
 const commandLimiter = new RateLimiter(30, 1_000); // 30 commands per second per session
 const MAX_WS_MESSAGE_SIZE = 4096; // 4KB max WebSocket message
-const world = new WorldManager(config);
+const world = new WorldManager(config, COMBAT_REQUIRED_ATTRIBUTES);
 const sessions = new SessionManager();
 
 // Let quest tracking read live inventory so collect objectives unlocked

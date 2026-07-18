@@ -14,9 +14,11 @@ export class WorldManager {
   readonly craftingSystem: CraftingSystem;
   gameSystem!: GameSystem;
   private config: ServerConfig;
+  private requiredAttributes: readonly string[];
 
-  constructor(config: ServerConfig) {
+  constructor(config: ServerConfig, requiredAttributes: readonly string[] = []) {
     this.config = config;
+    this.requiredAttributes = requiredAttributes;
     this.npcManager = new NpcManager();
     this.questManager = new QuestManager();
     this.craftingSystem = new CraftingSystem();
@@ -24,7 +26,7 @@ export class WorldManager {
   }
 
   async initialize(): Promise<void> {
-    this.gameSystem = await loadGameSystem(this.config.dataPath);
+    this.gameSystem = await loadGameSystem(this.config.dataPath, this.requiredAttributes);
 
     // Give the NPC manager the system's attribute definitions before any NPCs
     // spawn during area loading, so each NPC inherits the configured attribute

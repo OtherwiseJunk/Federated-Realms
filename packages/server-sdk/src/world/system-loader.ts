@@ -11,13 +11,6 @@ import type {
   SpellDef,
 } from "@realms/lexicons";
 
-// Attributes the combat engine reads with no `?? 10` fallback (since #88), so a
-// system that omits one yields a silent NaN in combat rather than a loud
-// failure. `str`/`dex` are read directly in combat-engine.ts (attack/defense
-// modifiers); `con` in computeNpcMaxHp (npc.ts, NPC hit points). Asserted at the
-// load boundary (issue #95), in the same spirit as #86's enum validation.
-const CORE_COMBAT_ATTRIBUTES = ["str", "dex", "con"] as const;
-
 // Every section is optional: a system.yml may omit any of them, and each is
 // resolved to `{}` at the single `?? {}` point below.
 interface SystemYaml {
@@ -31,7 +24,10 @@ interface SystemYaml {
   weightScale?: number;
 }
 
-export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
+export async function loadGameSystem(
+  dataPath: string,
+  requiredAttributes: readonly string[] = [],
+): Promise<GameSystem> {
   const file = Bun.file(`${dataPath}/system.yml`);
   if (!(await file.exists())) {
     throw new Error(`Game system file not found: ${dataPath}/system.yml`);
@@ -56,13 +52,15 @@ export async function loadGameSystem(dataPath: string): Promise<GameSystem> {
     weightScale: raw.weightScale ?? 1,
   };
 
-  // Combat reads these attributes directly with no fallback (since #88), so a
-  // system that omits one turns every combat modifier into a silent NaN. Fail
-  // the boot naming the missing attribute (issue #95).
-  for (const attr of CORE_COMBAT_ATTRIBUTES) {
+  // The combat rules read certain attributes directly with no fallback (since
+  // #88), so a system that omits one turns every combat modifier into a silent
+  // NaN. The SDK loader is system-agnostic and can't assume any particular
+  // attribute names, so the caller passes the set its rules require; fail the
+  // boot naming the missing one (issue #95).
+  for (const attr of requiredAttributes) {
     if (!Object.hasOwn(system.attributes, attr)) {
       throw new Error(
-        `system.yml: core combat attribute "${attr}" is not declared in attributes (required by the combat engine)`,
+        `system.yml: required combat attribute "${attr}" is not declared in attributes`,
       );
     }
   }

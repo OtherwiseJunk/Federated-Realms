@@ -141,7 +141,7 @@ spells:
     await expect(loadGameSystem(dataPath)).rejects.toThrow(/heal/);
   });
 
-  test("rejects a system missing a core combat attribute, naming it", async () => {
+  test("rejects a system missing a caller-required combat attribute, naming it", async () => {
     // Declares str/dex but omits con — combat would read attrs.con → NaN.
     const dataPath = writeSystem(`attributes:
   str:
@@ -149,13 +149,28 @@ spells:
   dex:
     name: Dexterity
 `);
-    await expect(loadGameSystem(dataPath)).rejects.toThrow(/con/);
-    await expect(loadGameSystem(dataPath)).rejects.toThrow(/combat attribute/);
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(/con/);
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(
+      /combat attribute/,
+    );
   });
 
   test("rejects a system that declares no attributes at all", async () => {
     const dataPath = writeSystem("classes:\n  warrior:\n    name: Warrior\n");
-    await expect(loadGameSystem(dataPath)).rejects.toThrow(/str/);
+    await expect(loadGameSystem(dataPath, ["str", "dex", "con"])).rejects.toThrow(/str/);
+  });
+
+  test("makes no attribute assumption when the caller passes no required set", async () => {
+    // A system with entirely non-standard attribute names loads fine — the SDK
+    // loader is system-agnostic; required attributes come from the caller's rules.
+    const system = await loadGameSystem(writeSystem("attributes:\n  might:\n    name: Might\n"));
+    expect(Object.keys(system.attributes)).toEqual(["might"]);
+  });
+
+  test("validates against whatever required set the caller passes", async () => {
+    const dataPath = writeSystem("attributes:\n  might:\n    name: Might\n");
+    await expect(loadGameSystem(dataPath, ["might"])).resolves.toBeDefined();
+    await expect(loadGameSystem(dataPath, ["reflexes"])).rejects.toThrow(/reflexes/);
   });
 
   test("rejects a spell referencing an undeclared attribute, naming the spell", async () => {
