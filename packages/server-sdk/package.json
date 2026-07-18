@@ -16,7 +16,6 @@
     "@realms/common": "workspace:*",
     "@realms/lexicons": "workspace:*",
     "@realms/protocol": "workspace:*",
-    "jose": "^6.2.1",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
