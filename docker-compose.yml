@@ -41,13 +41,15 @@ services:
 
   realms-server:
     build: .
-    # This publishes the app port directly to the host. Auth rate limiting trusts
-    # X-Forwarded-For per TRUSTED_PROXY_HOPS (default 1) — that is only safe if a
-    # trusted reverse proxy fronts this port. If the app is reachable directly (as
-    # this mapping allows), set TRUSTED_PROXY_HOPS=0 or put a proxy in front, or
-    # clients can forge X-Forwarded-For and spoof their rate-limit identity.
+    # Bound to localhost so only a same-host reverse proxy (e.g. nginx) can reach
+    # the app — the raw port is NOT publicly reachable. This is what makes the
+    # X-Forwarded-For / TRUSTED_PROXY_HOPS rate-limit logic sound: all external
+    # traffic arrives via the trusted proxy, which appends the real client IP.
+    # (Container-to-container access, e.g. realms-web, uses the compose network by
+    # service name and is unaffected.) If you deliberately expose this port to the
+    # public instead, set TRUSTED_PROXY_HOPS=0 or clients can forge X-Forwarded-For.
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
     depends_on:
       pds:
         condition: service_healthy
