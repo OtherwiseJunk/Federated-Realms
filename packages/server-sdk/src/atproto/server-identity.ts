@@ -246,7 +246,8 @@ export class ServerIdentity {
         unknown
       >;
       const now = Math.floor(Date.now() / 1000);
-      if (typeof claims.exp === "number" && now >= claims.exp) return null;
+      // Fail closed: a token with no numeric exp has no enforceable expiry.
+      if (typeof claims.exp !== "number" || now >= claims.exp) return null;
       if (claims.aud !== expectedAudience) return null;
 
       return {
@@ -254,9 +255,9 @@ export class ServerIdentity {
         sub: typeof claims.sub === "string" ? claims.sub : "",
         aud: typeof claims.aud === "string" ? claims.aud : "",
         iat: typeof claims.iat === "number" ? claims.iat : 0,
-        exp: typeof claims.exp === "number" ? claims.exp : 0,
-        characterHash: claims.characterHash as string,
-        targetRoom: claims.targetRoom as string,
+        exp: claims.exp,
+        characterHash: typeof claims.characterHash === "string" ? claims.characterHash : "",
+        targetRoom: typeof claims.targetRoom === "string" ? claims.targetRoom : "",
       };
     } catch {
       return null;

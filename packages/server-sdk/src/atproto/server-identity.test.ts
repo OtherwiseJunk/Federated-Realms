@@ -52,6 +52,17 @@ describe("transfer token signing", () => {
     expect(await server.verifyTransferToken(tampered, "did:plc:target")).toBeNull();
   });
 
+  test("rejects a token whose payload omits expiry (fail closed)", async () => {
+    const server = new ServerIdentity();
+    await server.initSigningKey();
+    // A signer that omits exp produces a token with no enforceable expiry.
+    const token = await server.signTransferToken({
+      ...payload(),
+      exp: undefined as unknown as number,
+    });
+    expect(await server.verifyTransferToken(token, "did:plc:target")).toBeNull();
+  });
+
   test("verifies a remote token against the signer's public key", async () => {
     const source = new ServerIdentity();
     await source.initSigningKey();
