@@ -67,6 +67,11 @@ services:
       - SERVER_DID=${SERVER_DID:-}
       - SERVER_HANDLE=${SERVER_HANDLE:-federated-realms.test}
       - SERVER_PASSWORD=${SERVER_PASSWORD:-}
+      # Optional override for the federation signing key (issue #23). When blank,
+      # the server persists a generated key to DATA_DIR (/data, a durable volume)
+      # and reloads it across restarts; set this only to manage the key as a
+      # secret instead.
+      - SERVER_SIGNING_KEY=${SERVER_SIGNING_KEY:-}
       - PDS_PUBLIC_URL=${PDS_PUBLIC_URL:-}
       - DATA_DIR=/data
       # OAuth

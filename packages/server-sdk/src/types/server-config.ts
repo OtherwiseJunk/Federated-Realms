@@ -25,6 +25,18 @@ export interface AtProtoConfig {
   serverDid: string;
   serverHandle: string;
   serverPassword: string;
+  /**
+   * Hex-encoded secp256k1 private signing key. When set (e.g. from a secret
+   * manager) it takes precedence and keeps federation signatures valid across
+   * restarts (issue #23). Empty = fall back to the persisted key file below.
+   */
+  serverSigningKey: string;
+  /**
+   * Path to persist/reload the generated signing key when SERVER_SIGNING_KEY is
+   * unset, so it survives restarts without logging the private key. Empty = the
+   * key is ephemeral (regenerated each boot).
+   */
+  signingKeyPath: string;
   publicUrl: string;
   /** Publicly reachable PDS URL — used as OAuth input for the signup flow. */
   pdsPublicUrl: string;
@@ -86,6 +98,8 @@ export function loadConfig(defaultDataPath?: string): ServerConfig {
       serverHandle:
         process.env.SERVER_HANDLE ?? `server.${process.env.PDS_HOSTNAME ?? "localhost"}`,
       serverPassword: process.env.SERVER_PASSWORD ?? "",
+      serverSigningKey: process.env.SERVER_SIGNING_KEY ?? "",
+      signingKeyPath: `${process.env.DATA_DIR ?? "./.state"}/server-signing-key`,
       publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? "3000"}`,
       pdsPublicUrl:
         process.env.PDS_PUBLIC_URL ??

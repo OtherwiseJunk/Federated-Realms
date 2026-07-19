@@ -9,6 +9,8 @@ const config = {
   serverDid: "",
   serverHandle: "server.localhost",
   serverPassword: "",
+  serverSigningKey: "",
+  signingKeyPath: "",
   publicUrl: "https://realms.example.com",
   pdsPublicUrl: "http://localhost:2583",
 };
