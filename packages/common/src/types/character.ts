@@ -58,10 +58,6 @@ export interface GameSystem {
   weightScale: number;
 }
 
-// Formula evaluation lives in ./formula.ts (a safe arithmetic parser — no code
-// compilation). Re-exported below so it stays part of the package's public API.
-export { evaluateFormula } from "./formula.js";
-
 // ── Derived stat formula defaults ──
 //
 // The engine assumes a formula exists for every core derived stat (maxHp,
