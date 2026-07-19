@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  evaluateFormula,
   computeDerivedStats,
   buildAttributes,
   profileToState,
@@ -9,51 +8,8 @@ import {
 import type { GameSystem } from "./character.ts";
 import type { CharacterProfile, FormulaDef } from "@realms/lexicons";
 
-describe("evaluateFormula", () => {
-  test("evaluates simple arithmetic", () => {
-    expect(evaluateFormula("2 + 3", {})).toBe(5);
-    expect(evaluateFormula("10 - 4", {})).toBe(6);
-    expect(evaluateFormula("3 * 4", {})).toBe(12);
-    expect(evaluateFormula("10 / 3", {})).toBe(3); // floored
-  });
-
-  test("substitutes variables", () => {
-    expect(evaluateFormula("str + 10", { str: 14 })).toBe(24);
-    expect(evaluateFormula("level * 5", { level: 3 })).toBe(15);
-  });
-
-  test("handles multiple variables", () => {
-    expect(evaluateFormula("str + con + level", { str: 14, con: 12, level: 3 })).toBe(29);
-  });
-
-  test("supports math functions", () => {
-    expect(evaluateFormula("floor(7.8)", {})).toBe(7);
-    expect(evaluateFormula("ceil(7.2)", {})).toBe(8);
-    expect(evaluateFormula("max(5, 10)", {})).toBe(10);
-    expect(evaluateFormula("min(5, 10)", {})).toBe(5);
-    expect(evaluateFormula("abs(-5)", {})).toBe(5);
-  });
-
-  test("handles complex expressions", () => {
-    // Default HP formula from system.yml: con * 2 + level * 5
-    expect(evaluateFormula("con * 2 + level * 5", { con: 13, level: 1 })).toBe(31);
-  });
-
-  test("handles parentheses", () => {
-    expect(evaluateFormula("(str + con) * 2", { str: 10, con: 12 })).toBe(44);
-  });
-
-  test("returns 0 for invalid results", () => {
-    expect(evaluateFormula("0 / 0", {})).toBe(0); // NaN -> 0
-  });
-
-  test("rejects dangerous expressions", () => {
-    expect(() => evaluateFormula("process.exit()", {})).toThrow("Invalid formula");
-    expect(() => evaluateFormula("globalThis", {})).toThrow("Invalid formula");
-    expect(() => evaluateFormula("require('fs')", {})).toThrow("Invalid formula");
-    expect(() => evaluateFormula("constructor", {})).toThrow("Invalid formula");
-  });
-});
+// evaluateFormula's own unit tests live in ./formula.test.ts. The tests below
+// exercise it indirectly through computeDerivedStats / profileToState.
 
 describe("computeDerivedStats", () => {
   const formulas: Record<string, FormulaDef> = {

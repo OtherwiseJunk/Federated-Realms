@@ -11,6 +11,7 @@ import type {
   SpellDef,
 } from "@realms/lexicons";
 import type { ItemInstance } from "./item.js";
+import { evaluateFormula } from "./formula.js";
 
 export interface CharacterState extends CharacterProfile {
   currentHp: number;
@@ -57,50 +58,9 @@ export interface GameSystem {
   weightScale: number;
 }
 
-// ── Formula evaluation ──
-// Simple expression evaluator for derived stat formulas.
-// Supports: +, -, *, /, parentheses, floor(), ceil(), min(), max(), and variable references.
-
-export function evaluateFormula(expression: string, variables: Record<string, number>): number {
-  // Replace variable names with their values (longest first to avoid partial matches)
-  let expr = expression;
-  const sortedVars = Object.entries(variables).sort(([a], [b]) => b.length - a.length);
-  for (const [name, value] of sortedVars) {
-    expr = expr.replaceAll(name, String(value));
-  }
-
-  // Evaluate with a safe subset — no access to globals
-  // Replace math functions with Math.*
-  expr = expr
-    .replace(/\bfloor\b/g, "Math.floor")
-    .replace(/\bceil\b/g, "Math.ceil")
-    .replace(/\bmin\b/g, "Math.min")
-    .replace(/\bmax\b/g, "Math.max")
-    .replace(/\babs\b/g, "Math.abs");
-
-  // Validate: reject any Math.* calls beyond the allowed set
-  const mathCalls = expr.match(/Math\.(\w+)/g) ?? [];
-  const allowedMath = new Set(["Math.floor", "Math.ceil", "Math.min", "Math.max", "Math.abs"]);
-  for (const call of mathCalls) {
-    if (!allowedMath.has(call)) {
-      throw new Error(`Function not allowed in formula: ${call} (expression: ${expression})`);
-    }
-  }
-
-  // After stripping allowed Math calls, only allow digits, operators, parens, commas, whitespace
-  const sanitized = expr.replace(/Math\.(floor|ceil|min|max|abs)/g, "0");
-  if (!/^[\d\s+\-*/().,]*$/.test(sanitized)) {
-    throw new Error(`Invalid formula expression: ${expression}`);
-  }
-
-  try {
-    const fn = new Function("Math", `"use strict"; return (${expr});`);
-    const result = fn(Math);
-    return typeof result === "number" && isFinite(result) ? Math.floor(result) : 0;
-  } catch {
-    throw new Error(`Failed to evaluate formula: ${expression}`);
-  }
-}
+// Formula evaluation lives in ./formula.ts (a safe arithmetic parser — no code
+// compilation). Re-exported below so it stays part of the package's public API.
+export { evaluateFormula } from "./formula.js";
 
 // ── Derived stat formula defaults ──
 //
