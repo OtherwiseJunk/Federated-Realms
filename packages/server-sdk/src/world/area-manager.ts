@@ -74,6 +74,7 @@ interface NpcDef {
   description: string;
   behavior: string;
   level?: number;
+  attackCooldown?: number;
   attributes?: Record<string, number>;
   dialogue?: Record<string, { text: string; responses?: Array<{ text: string; next?: string }> }>;
   art?: string[];
@@ -304,6 +305,14 @@ export class AreaManager {
 
       for (const def of npcsData.definitions) {
         const defId = `${areaId}:${def.id}`;
+        if (
+          def.attackCooldown !== undefined &&
+          (!Number.isInteger(def.attackCooldown) || def.attackCooldown < 1)
+        ) {
+          throw new Error(
+            `${areaId}/npcs.yml: NPC "${def.id}" attackCooldown must be an integer >= 1, got ${def.attackCooldown}`,
+          );
+        }
         const npcDef: NpcDefinition = {
           name: def.name,
           description: def.description,
@@ -313,6 +322,7 @@ export class AreaManager {
             `${areaId}/npcs.yml: NPC "${def.id}" behavior`,
           ),
           level: def.level,
+          attackCooldown: def.attackCooldown,
           attributes: def.attributes,
           dialogue: def.dialogue as NpcDefinition["dialogue"],
           art: def.art,
