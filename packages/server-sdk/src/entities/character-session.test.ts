@@ -462,4 +462,18 @@ describe("CharacterSession.regenAp", () => {
     expect(session.regenAp()).toBe(false);
     expect(session.state.currentAp).toBe(session.state.maxAp);
   });
+
+  test("clamps overshoot when regen amount exceeds remaining capacity", () => {
+    const session = makeSession(
+      {},
+      {
+        ...FORMULAS,
+        apRegen: { name: "AP Regen", expression: "1 + floor((con - 10) / 4)", min: 1 },
+      },
+    );
+    session.state.attributes.con = 18; // 1 + floor(8/4) = 3
+    session.state.currentAp = session.state.maxAp - 1;
+    expect(session.regenAp()).toBe(true);
+    expect(session.state.currentAp).toBe(session.state.maxAp);
+  });
 });
