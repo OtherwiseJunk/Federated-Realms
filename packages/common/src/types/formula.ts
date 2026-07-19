@@ -43,55 +43,67 @@ type Token =
   | { kind: "rparen" }
   | { kind: "comma" };
 
+const isWhitespace = (ch: string): boolean =>
+  ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
+
+const isDigit = (ch: string): boolean => ch >= "0" && ch <= "9";
+
+const isIdentifierStart = (ch: string): boolean => /[a-zA-Z_]/.test(ch);
+
+const isIdentifierChar = (ch: string): boolean => /[a-zA-Z0-9_]/.test(ch);
+
+const isOperator = (ch: string): ch is "+" | "-" | "*" | "/" =>
+  ch === "+" || ch === "-" || ch === "*" || ch === "/";
+
+/** Scan the number literal starting at `start`; returns the token and the index one past it. */
+function scanNumber(expression: string, start: number): { token: Token; end: number } {
+  let end = start + 1;
+  while (end < expression.length && (isDigit(expression[end]) || expression[end] === ".")) end++;
+  const raw = expression.slice(start, end);
+  // Reject malformed numbers like "1.2.3" or "1.".
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(raw)) {
+    throw new Error(`Invalid formula: malformed number "${raw}"`);
+  }
+  return { token: { kind: "num", value: Number(raw) }, end };
+}
+
+/** Scan the identifier (variable or function name) starting at `start`. */
+function scanIdentifier(expression: string, start: number): { token: Token; end: number } {
+  let end = start + 1;
+  while (end < expression.length && isIdentifierChar(expression[end])) end++;
+  return { token: { kind: "ident", value: expression.slice(start, end) }, end };
+}
+
 function tokenize(expression: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   while (i < expression.length) {
     const ch = expression[i];
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+    if (isWhitespace(ch)) {
       i++;
-      continue;
-    }
-    if (ch >= "0" && ch <= "9") {
-      let j = i + 1;
-      while (j < expression.length && /[0-9.]/.test(expression[j])) j++;
-      const raw = expression.slice(i, j);
-      // Reject malformed numbers like "1.2.3" or a bare ".".
-      if (!/^[0-9]+(\.[0-9]+)?$/.test(raw)) {
-        throw new Error(`Invalid formula: malformed number "${raw}"`);
-      }
-      tokens.push({ kind: "num", value: Number(raw) });
-      i = j;
-      continue;
-    }
-    if (/[a-zA-Z_]/.test(ch)) {
-      let j = i + 1;
-      while (j < expression.length && /[a-zA-Z0-9_]/.test(expression[j])) j++;
-      tokens.push({ kind: "ident", value: expression.slice(i, j) });
-      i = j;
-      continue;
-    }
-    if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+    } else if (isDigit(ch)) {
+      const { token, end } = scanNumber(expression, i);
+      tokens.push(token);
+      i = end;
+    } else if (isIdentifierStart(ch)) {
+      const { token, end } = scanIdentifier(expression, i);
+      tokens.push(token);
+      i = end;
+    } else if (isOperator(ch)) {
       tokens.push({ kind: "op", value: ch });
       i++;
-      continue;
-    }
-    if (ch === "(") {
+    } else if (ch === "(") {
       tokens.push({ kind: "lparen" });
       i++;
-      continue;
-    }
-    if (ch === ")") {
+    } else if (ch === ")") {
       tokens.push({ kind: "rparen" });
       i++;
-      continue;
-    }
-    if (ch === ",") {
+    } else if (ch === ",") {
       tokens.push({ kind: "comma" });
       i++;
-      continue;
+    } else {
+      throw new Error(`Invalid formula: unexpected character "${ch}"`);
     }
-    throw new Error(`Invalid formula: unexpected character "${ch}"`);
   }
   return tokens;
 }
