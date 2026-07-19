@@ -1,4 +1,5 @@
 export * from "./types/character.js";
+export * from "./types/formula.js";
 export * from "./types/room.js";
 export * from "./types/item.js";
 export * from "./types/npc.js";
