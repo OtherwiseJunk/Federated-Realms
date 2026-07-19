@@ -1,7 +1,7 @@
 import { AtpAgent } from "@atproto/api";
 import { Secp256k1Keypair } from "@atproto/crypto";
 import { verifySig } from "@atproto/crypto/dist/secp256k1/operations";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtProtoConfig } from "../types/server-config.js";
 import { NSID } from "@realms/lexicons";
@@ -14,14 +14,23 @@ function b64url(data: Uint8Array | string): string {
 async function readKeyFile(path: string): Promise<string | undefined> {
   try {
     return (await readFile(path, "utf8")).trim() || undefined;
-  } catch {
-    return undefined;
+  } catch (err) {
+    // Only "no file yet" is a normal first-boot condition. Any other read error
+    // (permissions, I/O) must propagate rather than be swallowed — otherwise
+    // resolveSigningKey would treat it as "no key", regenerate, and overwrite a
+    // key file that exists but is momentarily unreadable, destroying the durable
+    // key (issue #23).
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
   }
 }
 
 async function writeKeyFile(path: string, hex: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, hex, { mode: 0o600 });
+  // writeFile's `mode` only applies when creating a new file; chmod ensures a
+  // pre-existing key file is tightened to 0600 as well.
+  await chmod(path, 0o600);
 }
 
 export interface TransferPayload {
