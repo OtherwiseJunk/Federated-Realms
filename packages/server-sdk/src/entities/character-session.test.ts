@@ -433,3 +433,33 @@ describe("CharacterSession", () => {
     });
   });
 });
+
+describe("CharacterSession.regenAp", () => {
+  test("regenerates 1 AP per tick when the system defines no apRegen formula", () => {
+    const session = makeSession(); // FORMULAS has no apRegen, con 13
+    session.state.currentAp = 0;
+    expect(session.regenAp()).toBe(true);
+    expect(session.state.currentAp).toBe(1);
+  });
+
+  test("uses the apRegen formula when the system defines one", () => {
+    const session = makeSession(
+      {},
+      {
+        ...FORMULAS,
+        apRegen: { name: "AP Regen", expression: "1 + floor((con - 10) / 4)", min: 1 },
+      },
+    ); // con 13 -> 1 + floor(3/4) = 1
+    session.state.attributes.con = 18; // 1 + floor(8/4) = 3
+    session.state.currentAp = 0;
+    session.regenAp();
+    expect(session.state.currentAp).toBe(3);
+  });
+
+  test("caps at maxAp and reports no change when already full", () => {
+    const session = makeSession();
+    session.state.currentAp = session.state.maxAp;
+    expect(session.regenAp()).toBe(false);
+    expect(session.state.currentAp).toBe(session.state.maxAp);
+  });
+});
