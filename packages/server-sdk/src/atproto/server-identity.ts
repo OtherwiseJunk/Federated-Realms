@@ -1,12 +1,36 @@
 import { AtpAgent } from "@atproto/api";
 import { Secp256k1Keypair } from "@atproto/crypto";
 import { verifySig } from "@atproto/crypto/dist/secp256k1/operations";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { AtProtoConfig } from "../types/server-config.js";
 import { NSID } from "@realms/lexicons";
 
 function b64url(data: Uint8Array | string): string {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   return Buffer.from(bytes).toString("base64url");
+}
+
+async function readKeyFile(path: string): Promise<string | undefined> {
+  try {
+    return (await readFile(path, "utf8")).trim() || undefined;
+  } catch (err) {
+    // Only "no file yet" is a normal first-boot condition. Any other read error
+    // (permissions, I/O) must propagate rather than be swallowed — otherwise
+    // resolveSigningKey would treat it as "no key", regenerate, and overwrite a
+    // key file that exists but is momentarily unreadable, destroying the durable
+    // key (issue #23).
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
+async function writeKeyFile(path: string, hex: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, hex, { mode: 0o600 });
+  // writeFile's `mode` only applies when creating a new file; chmod ensures a
+  // pre-existing key file is tightened to 0600 as well.
+  await chmod(path, 0o600);
 }
 
 export interface TransferPayload {
@@ -139,7 +163,7 @@ export class ServerIdentity {
     }
 
     try {
-      await this.initSigningKey();
+      await this.resolveSigningKey(config);
     } catch (err) {
       console.warn(
         "   Signing key init failed (federation features disabled):",
@@ -150,8 +174,53 @@ export class ServerIdentity {
     await this.publishServerRecord(config, serverName, serverDescription);
   }
 
-  async initSigningKey(): Promise<void> {
-    this.signingKey = await Secp256k1Keypair.create({ exportable: true });
+  async initSigningKey(persistedKey?: string): Promise<void> {
+    const key = persistedKey?.trim();
+    this.signingKey = key
+      ? await Secp256k1Keypair.import(new Uint8Array(Buffer.from(key, "hex")), { exportable: true })
+      : await Secp256k1Keypair.create({ exportable: true });
+  }
+
+  /**
+   * The signing key's private bytes as hex, for persisting to SERVER_SIGNING_KEY
+   * so federation signatures stay valid across restarts (issue #23).
+   */
+  async exportSigningKey(): Promise<string> {
+    return Buffer.from(await this.requireSigningKey().export()).toString("hex");
+  }
+
+  /**
+   * Load the federation signing key so it stays stable across restarts (issue
+   * #23). Precedence: SERVER_SIGNING_KEY (env) for secret-manager setups;
+   * otherwise persist to / reload from a key file in the data dir; only if
+   * neither is available does it fall back to an ephemeral key. The private key
+   * is never logged.
+   */
+  private async resolveSigningKey(config: AtProtoConfig): Promise<void> {
+    const envKey = config.serverSigningKey?.trim();
+    if (envKey) {
+      await this.initSigningKey(envKey);
+      return;
+    }
+
+    const keyPath = config.signingKeyPath?.trim();
+    if (keyPath) {
+      const existing = await readKeyFile(keyPath);
+      if (existing) {
+        await this.initSigningKey(existing);
+        return;
+      }
+      await this.initSigningKey();
+      await writeKeyFile(keyPath, await this.exportSigningKey());
+      console.log(`   Generated a new server signing key, persisted to ${keyPath}.`);
+      return;
+    }
+
+    await this.initSigningKey();
+    console.warn(
+      "   ⚠  No SERVER_SIGNING_KEY or key path set — using an ephemeral signing key that " +
+        "rotates each restart, breaking federation signatures across restarts (issue #23).",
+    );
   }
 
   /**

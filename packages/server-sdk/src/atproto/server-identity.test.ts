@@ -112,3 +112,50 @@ describe("serverAccountLoginError", () => {
     expect(m).toMatch(/plc|wipe|reset/);
   });
 });
+
+describe("signing key persistence", () => {
+  function payload() {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      iss: "did:plc:source",
+      sub: "did:plc:player",
+      aud: "did:plc:target",
+      iat: now,
+      exp: now + 60,
+      characterHash: "abc123",
+      targetRoom: "starter-town:square",
+    };
+  }
+
+  test("restores the same key from a persisted hex value", async () => {
+    const original = new ServerIdentity();
+    await original.initSigningKey();
+    const hex = await original.exportSigningKey();
+
+    const restored = new ServerIdentity();
+    await restored.initSigningKey(hex);
+
+    expect(Buffer.from(restored.getPublicKeyBytes())).toEqual(
+      Buffer.from(original.getPublicKeyBytes()),
+    );
+    // a token signed before the "restart" still verifies against the restored key
+    const token = await original.signTransferToken(payload());
+    expect(await restored.verifyTransferToken(token, "did:plc:target")).toMatchObject({
+      sub: "did:plc:player",
+    });
+  });
+
+  test("generates a fresh key when none is persisted", async () => {
+    const a = new ServerIdentity();
+    await a.initSigningKey();
+    const b = new ServerIdentity();
+    await b.initSigningKey();
+    expect(Buffer.from(b.getPublicKeyBytes())).not.toEqual(Buffer.from(a.getPublicKeyBytes()));
+  });
+
+  test("treats a blank persisted key as none (generates fresh)", async () => {
+    const s = new ServerIdentity();
+    await s.initSigningKey("   ");
+    expect(s.canSign).toBe(true);
+  });
+});
