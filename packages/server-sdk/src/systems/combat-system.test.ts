@@ -36,6 +36,8 @@ function makeNpc(overrides: Partial<NpcInstance> = {}): NpcInstance {
     attributes: { str: 10, dex: 10 },
     currentHp: 20,
     maxHp: 20,
+    attackCooldown: 1,
+    ticksUntilSwing: 1,
     ...overrides,
   };
 }
