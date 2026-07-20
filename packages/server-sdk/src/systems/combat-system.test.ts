@@ -240,4 +240,29 @@ describe("pulse combat (issue #24)", () => {
     expect(session.inCombat).toBe(false); // combat ended by death
     expect(session.state.currentHp).toBeGreaterThan(0); // respawned at 25% HP
   });
+
+  test("switching target onto an already-engaged NPC does not reset its wind-up (regression)", () => {
+    const goblin = makeNpc({
+      attackCooldown: 1,
+      ticksUntilSwing: 1,
+      currentHp: 500,
+      maxHp: 500,
+    });
+    const tiger = makeNpc({
+      instanceId: "npc-2",
+      name: "Tiger",
+      state: "combat",
+      attackCooldown: 3,
+      ticksUntilSwing: 1, // mid-wind-up
+      currentHp: 500,
+      maxHp: 500,
+    });
+    const { combat, session } = makeCombatSystem([goblin, tiger]);
+    session.state.currentAp = session.state.maxAp; // enough for two attacks
+
+    combat.attack(session, "Goblin"); // starting target
+    combat.attack(session, "Tiger"); // target switch onto the already-engaged tiger
+
+    expect(tiger.ticksUntilSwing).toBe(1); // not re-seeded to 3
+  });
 });

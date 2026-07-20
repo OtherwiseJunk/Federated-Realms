@@ -65,8 +65,9 @@ export class CombatSystem {
     }
   }
 
-  /** Put an NPC into combat and seed its swing wind-up. */
+  /** Put an NPC into combat and seed its swing wind-up. Idempotent: re-engaging (e.g. a target switch) must not reset an in-progress wind-up. */
   private engageNpc(npc: NpcInstance): void {
+    if (npc.state === "combat") return;
     npc.state = "combat";
     npc.ticksUntilSwing = npc.attackCooldown;
   }
