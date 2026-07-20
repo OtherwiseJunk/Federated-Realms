@@ -89,9 +89,14 @@ function makeCombatSystem(npcs: NpcInstance[]): {
       id: "test-area:spawn",
       isSafe: () => false,
       addGroundItem: () => {},
+      removePlayer: () => {},
+      addPlayer: () => {},
+      toState: () => ({}),
+      title: "Spawn",
     }),
+    getDefaultSpawnRoom: () => "test-area:spawn",
   } as unknown as WorldManager;
-  const sessions = {} as unknown as SessionManager;
+  const sessions = { getAllSessions: () => [session] } as unknown as SessionManager;
   const ctx: CombatContext = { world, sessions, broadcast: () => {} };
 
   return { combat: new CombatSystem(ctx), session };
@@ -103,10 +108,11 @@ describe("CombatSystem defend", () => {
     const attrsBefore = { ...session.state.attributes };
 
     combat.defend(session);
+    combat.onTick();
 
     expect(session.state.attributes).toEqual(attrsBefore);
     expect(session.state.attributes.dex).toBe(12);
-    expect(session.isDefending).toBe(false);
+    expect(session.isDefending).toBe(true);
   });
 
   test("leaves attributes intact even if an NPC attack throws mid-round", () => {
@@ -125,7 +131,7 @@ describe("CombatSystem defend", () => {
     session.isDefending = true;
 
     expect(() => {
-      (combat as unknown as { allNpcsRetaliate: (s: CharacterSession) => void }).allNpcsRetaliate(
+      (combat as unknown as { resolveTickSwings: (s: CharacterSession) => void }).resolveTickSwings(
         session,
       );
     }).toThrow();
@@ -163,5 +169,75 @@ describe("AP economy (issue #24)", () => {
 
     combat.castSpell(session, "firebolt", "Goblin");
     expect(session.state.currentAp).toBe(session.state.maxAp - 2);
+  });
+});
+
+describe("pulse combat (issue #24)", () => {
+  test("onTick regenerates AP for sessions out of combat", () => {
+    const { combat, session } = makeCombatSystem([]);
+    session.combatTarget = null;
+    session.state.currentAp = 0;
+    combat.onTick();
+    expect(session.state.currentAp).toBe(1);
+  });
+
+  test("cooldown-1 NPC swings every tick; cooldown-3 NPC winds up", () => {
+    const goblin = makeNpc({ attackCooldown: 1, ticksUntilSwing: 1 });
+    const tiger = makeNpc({
+      instanceId: "npc-2",
+      name: "Tiger",
+      attackCooldown: 3,
+      ticksUntilSwing: 3,
+    });
+    const { combat } = makeCombatSystem([goblin, tiger]);
+
+    combat.onTick();
+    expect(goblin.ticksUntilSwing).toBe(1); // swung, counter reset
+    expect(tiger.ticksUntilSwing).toBe(2); // winding up
+    combat.onTick();
+    expect(tiger.ticksUntilSwing).toBe(1);
+    combat.onTick();
+    expect(tiger.ticksUntilSwing).toBe(3); // swung on its third tick, reset
+  });
+
+  test("defend is a stance: survives ticks, cleared by the next action", () => {
+    const npc = makeNpc({ currentHp: 500, maxHp: 500 });
+    const { combat, session } = makeCombatSystem([npc]);
+    session.state.currentAp = session.state.maxAp;
+
+    combat.defend(session);
+    expect(session.isDefending).toBe(true);
+    combat.onTick();
+    expect(session.isDefending).toBe(true); // stance persists through the pulse
+    combat.attack(session);
+    expect(session.isDefending).toBe(false); // next action drops it
+  });
+
+  test("actions no longer trigger retaliation; only the tick does", () => {
+    const npc = makeNpc({ currentHp: 500, maxHp: 500 });
+    const { combat, session } = makeCombatSystem([npc]);
+    session.state.currentAp = session.state.maxAp;
+    const hpBefore = session.state.currentHp;
+
+    combat.attack(session);
+    expect(session.state.currentHp).toBe(hpBefore); // no action-triggered swing back
+  });
+
+  test("a lethal tick swing routes through player death handling", () => {
+    // dex 40 -> +15 to hit, level 20 -> +10: minimum roll 26 vs AC ~11 = guaranteed hit;
+    // damage 20*2 + str mod >= 40 kills a level-1 player from full HP.
+    const brute = makeNpc({
+      name: "Brute",
+      attributes: { str: 40, dex: 40 },
+      level: 20,
+      currentHp: 500,
+      maxHp: 500,
+    });
+    const { combat, session } = makeCombatSystem([brute]);
+    session.state.currentHp = 1;
+
+    combat.onTick();
+    expect(session.inCombat).toBe(false); // combat ended by death
+    expect(session.state.currentHp).toBeGreaterThan(0); // respawned at 25% HP
   });
 });
