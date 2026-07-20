@@ -320,6 +320,9 @@ function buildCharacterProfile(
 const TICK_INTERVAL_MS = 5000; // 5 second tick for respawns
 
 setInterval(() => {
+  // Combat pulse: AP regen + NPC swings (issue #24)
+  combat.onTick();
+
   // Process NPC respawns
   const respawned = world.npcManager.processRespawns((id) => world.getRoom(id));
   for (const npc of respawned) {

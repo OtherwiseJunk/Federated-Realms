@@ -178,6 +178,78 @@ export class TestClient {
   }
 }
 
+// ─── Pulse combat (issue #24) test helpers ────────────────────
+//
+// AP regenerates only on the server's 5s tick, not per action, and NPCs
+// swing only from that same tick (gated by their attackCooldown) — not in
+// response to player actions. Tests that repeatedly act on a hostile target
+// (attack/flee/defend/cast in a loop) need to wait out a tick when AP runs
+// dry instead of resending immediately: resending immediately just burns
+// through the per-session command rate limit (30/sec) for no effect, since
+// the server silently drops requests over that limit.
+
+/** How long to wait for one server tick, plus margin. */
+export const TICK_WAIT_MS = 5300;
+
+/** Result of an AP-aware action: its reply text, and whether the player died
+ * at any point while we were waiting for AP (see `actUntilApReady`). */
+export interface ActionOutcome {
+  text: string;
+  died: boolean;
+}
+
+/** True if a `combat_end` with reason "death" is sitting in the client's
+ * currently-buffered messages. Pulse combat resolves NPC swings — and thus
+ * player death — from the server's tick, decoupled from whatever command
+ * reply we're waiting on, so death shows up as this structured message
+ * rather than as part of a specific command's narrative text. */
+export function diedRecently(client: TestClient): boolean {
+  return client.getMessagesOfType("combat_end").some((e) => e.reason === "death");
+}
+
+/**
+ * Send a command; if the server refuses it for lack of AP, wait out a pulse
+ * tick (which regenerates AP) and retry, up to `maxWaits` times. Checks for
+ * death after every attempt and wait, since a tick-driven NPC swing can kill
+ * the player at any point during those waits.
+ */
+export async function actUntilApReady(
+  client: TestClient,
+  input: string,
+  maxWaits = 8,
+): Promise<ActionOutcome> {
+  for (let i = 0; i < maxWaits; i++) {
+    const text = await client.commandAndWait(input);
+    if (diedRecently(client)) return { text, died: true };
+    if (!text.includes("Not enough AP")) return { text, died: false };
+    await client.tick(TICK_WAIT_MS);
+    if (diedRecently(client)) return { text, died: true };
+  }
+  throw new Error(`AP never recovered enough to '${input}' after ${maxWaits} ticks`);
+}
+
+/**
+ * Flee repeatedly (AP-aware) until escaping, confirming death, or finding
+ * we were never in combat. `maxAttempts` is generous — a "stuck" outcome
+ * (exhausted with no definitive resolution) leaves the caller still
+ * mid-combat in the same room, which callers typically should treat as a
+ * hard error rather than something safe to route around (e.g. by moving on
+ * as if combat had cleared).
+ */
+export async function fleeUntilClear(
+  client: TestClient,
+  maxAttempts = 20,
+): Promise<"escaped" | "died" | "no_combat" | "stuck"> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const { text, died } = await actUntilApReady(client, "flee");
+    if (died) return "died";
+    if (text.includes("escape")) return "escaped";
+    if (text.includes("not in combat") || text.includes("Just walk away")) return "no_combat";
+    if (text.includes("defeated")) return "died";
+  }
+  return "stuck";
+}
+
 /** Temp state dirs per spawned server, removed in stopServer */
 const serverDataDirs = new Map<Subprocess, string>();
 

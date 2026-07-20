@@ -1,6 +1,13 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
-import { TestClient, startServer, stopServer } from "../helpers.ts";
+import {
+  TestClient,
+  startServer,
+  stopServer,
+  TICK_WAIT_MS,
+  actUntilApReady,
+  fleeUntilClear,
+} from "../helpers.ts";
 
 let port: number;
 let serverProc: Subprocess;
@@ -14,6 +21,39 @@ beforeAll(async () => {
 afterAll(() => {
   stopServer(serverProc);
 });
+
+/**
+ * Navigate from town square to forest-path, fleeing the wolf if it
+ * auto-aggros. Pulse combat can let the wolf kill the player during that
+ * flee — ticks give it real chances to swing while we wait on AP (an
+ * unarmored player has a ~70% chance of getting hit for real damage per
+ * wolf swing), and if that happens we respawn back at town square, so this
+ * restarts navigation from there rather than continuing to walk from a room
+ * we're no longer in. Resolves once we're alive and standing in forest-path.
+ * `attemptsLeft` is generous because dying once along the way isn't rare.
+ */
+async function reachForestPathAlive(client: TestClient, attemptsLeft = 8): Promise<void> {
+  if (attemptsLeft <= 0) {
+    throw new Error("Could not reach forest-path alive after several attempts");
+  }
+  await client.commandAndWaitRoom("s"); // gate
+  await client.commandAndWaitRoom("s"); // crossroads
+  await client.commandAndWaitRoom("e"); // forest-edge
+  await client.commandAndWaitRoom("e"); // forest-path — may auto-aggro
+  await client.tick(200);
+  const outcome = await fleeUntilClear(client);
+  client.clearMessages();
+  if (outcome === "stuck") {
+    // Still mid-combat in forest-path — we haven't moved, so restarting
+    // navigation from town square would be wrong. This should be
+    // exceedingly rare given fleeUntilClear's generous attempt budget.
+    throw new Error("Stuck fleeing the forest-path wolf — never escaped or died");
+  }
+  if (outcome === "died") {
+    await client.tick(300);
+    await reachForestPathAlive(client, attemptsLeft - 1);
+  }
+}
 
 // ─── Combat ─────────────────────────────────────────────────
 
@@ -67,46 +107,26 @@ describe("combat", () => {
     // Wait for auto-aggro to settle
     await client.tick(200);
 
-    // Try fleeing — with high dex (16) should usually succeed
-    // Accept either escape or getting killed as valid outcomes
-    let result: "escape" | "died" | "stuck" = "stuck";
-    for (let i = 0; i < 10; i++) {
-      client.clearMessages();
-      const text = await client.commandAndWait("flee");
-      if (text.includes("escape")) {
-        result = "escape";
-        break;
-      }
-      if (text.includes("not in combat") || text.includes("defeated")) {
-        result = "died";
-        break;
-      }
-      // Otherwise: "can't get away" — keep trying
-    }
-    // Flee mechanic works if we got any combat-relevant response
-    expect(result === "escape" || result === "died").toBe(true);
+    // Try fleeing — with high dex (16) should usually succeed. Flee costs
+    // AP; under pulse combat that AP only regenerates on a server tick, so
+    // a failed attempt needs a tick wait before it's worth retrying, and
+    // the wolf gets real chances to swing while we wait. Any definitive
+    // outcome (escape, death, or already clear) confirms flee works —
+    // "stuck" (exhausted retries with no resolution) is the only failure.
+    const result = await fleeUntilClear(client);
+    expect(result).not.toBe("stuck");
     client.disconnect();
-  });
+  }, 300_000);
 
   test("safe rooms prevent combat", async () => {
     const client = new TestClient("SafeZone");
     await client.connect(port, { classId: "rogue", raceId: "elf" });
     await client.waitFor("room_state");
 
-    // Navigate toward mushroom grove (safe zone) — must pass through forest path
-    await client.commandAndWaitRoom("s"); // gate
-    await client.commandAndWaitRoom("s"); // crossroads
-    await client.commandAndWaitRoom("e"); // forest edge
-    await client.commandAndWaitRoom("e"); // forest path (wolf auto-aggro)
-
-    // Flee from auto-aggro'd wolf before continuing
-    await client.tick(200);
-    for (let i = 0; i < 20; i++) {
-      client.clearMessages();
-      const fleeText = await client.commandAndWait("flee");
-      if (fleeText.includes("escape") || fleeText.includes("not in combat")) break;
-      if (fleeText.includes("defeated")) break;
-    }
+    // Navigate toward mushroom grove (safe zone) — must pass through forest
+    // path, fleeing the wolf if it auto-aggros (and, per pulse combat,
+    // restarting from town square if it kills us before we escape).
+    await reachForestPathAlive(client);
 
     await client.commandAndWaitRoom("n"); // mushroom grove (safe)
     client.clearMessages();
@@ -114,7 +134,7 @@ describe("combat", () => {
     const text = await client.commandAndWait("attack morel");
     expect(text).toContain("safe zone");
     client.disconnect();
-  });
+  }, 300_000);
 
   test("use consumable in combat", async () => {
     const client = new TestClient("PotionUser");
@@ -145,11 +165,14 @@ describe("combat", () => {
   });
 
   test("kill NPC, gain XP, get loot", async () => {
-    // Combat is RNG-based — retry with fresh connections if player dies
+    // Combat is RNG-based — retry with fresh connections if player dies.
+    // Con-heavy build (dwarf warrior) keeps AP regen at 2/tick, matching
+    // the attack cost, so only one tick wait is needed between attacks
+    // once the starting AP burst is spent.
     let killed = false;
     for (let attempt = 0; attempt < 3 && !killed; attempt++) {
       const client = new TestClient(`Slayer${attempt}`);
-      await client.connect(port, { classId: "warrior", raceId: "orc" });
+      await client.connect(port, { classId: "warrior", raceId: "dwarf" });
       await client.waitFor("room_state");
 
       // Navigate to forest path — wolf auto-aggros on entry
@@ -160,22 +183,25 @@ describe("combat", () => {
       await client.tick(200);
       client.clearMessages();
 
-      // Fight wolf until it dies or we die (combat already started via auto-aggro)
-      for (let i = 0; i < 30; i++) {
-        const text = await client.commandAndWait("attack wolf");
+      // Fight wolf until it dies or we die (combat already started via
+      // auto-aggro). AP only regenerates on the server tick, so a refused
+      // attack needs a tick wait before it's worth retrying, and the wolf
+      // gets real chances to swing back while we wait.
+      for (let i = 0; i < 20; i++) {
+        const { text, died } = await actUntilApReady(client, "attack wolf");
         if (text.includes("slain")) {
           killed = true;
           expect(text).toContain("XP");
           break;
         }
-        if (text.includes("defeated") || text.includes("don't see")) {
+        if (died || text.includes("defeated") || text.includes("don't see")) {
           break;
         }
       }
       client.disconnect();
     }
     expect(killed).toBe(true);
-  });
+  }, 240_000);
 });
 
 // ─── Spells ──────────────────────────────────────────────────
@@ -231,33 +257,24 @@ describe("spells", () => {
     await mage.connect(port, { classId: "mage", raceId: "elf" });
     await mage.waitFor("room_state");
 
-    // Navigate to deep forest — wolf auto-aggros on entry
-    await mage.commandAndWaitRoom("s"); // gate
-    await mage.commandAndWaitRoom("s"); // crossroads
-    await mage.commandAndWaitRoom("e"); // forest edge
-    await mage.commandAndWaitRoom("e"); // forest path (may or may not have wolf)
-
-    // Flee if auto-aggro'd at forest-path
-    await mage.tick(200);
-    for (let i = 0; i < 20; i++) {
-      mage.clearMessages();
-      const fleeText = await mage.commandAndWait("flee");
-      if (fleeText.includes("escape") || fleeText.includes("not in combat")) break;
-      if (fleeText.includes("defeated")) break;
-    }
+    // Navigate to deep forest, fleeing the forest-path wolf if it
+    // auto-aggros (restarting from town square if it kills us first).
+    await reachForestPathAlive(mage);
 
     // Continue to deep forest (wolf here auto-aggros)
     await mage.commandAndWaitRoom("e"); // deep forest
     await mage.tick(200);
 
-    // Cast fireball on the wolf (already in combat via auto-aggro)
+    // Cast fireball on the wolf (already in combat via auto-aggro).
+    // Fireball costs 4 AP — the mage's full pool — so if fleeing above
+    // spent AP, wait for it to regenerate before the cast lands.
     mage.clearMessages();
-    const text = await mage.commandAndWait("cast fireball wolf");
+    const { text } = await actUntilApReady(mage, "cast fireball wolf");
     expect(text).toContain("casts Fireball");
     expect(text).toContain("MP spent");
 
     mage.disconnect();
-  });
+  }, 400_000);
 
   test("warrior cannot cast spells", async () => {
     const warrior = new TestClient("WarriorCaster");
@@ -354,29 +371,58 @@ describe("action points", () => {
     client.disconnect();
   });
 
-  test("AP refreshes each combat round", async () => {
+  test("AP drains with attacks and regenerates on the tick", async () => {
     const client = new TestClient("APRefresh");
-    await client.connect(port, { classId: "warrior", raceId: "orc" });
+    await client.connect(port, { classId: "warrior", raceId: "dwarf" });
     await client.waitFor("room_state");
 
-    // Navigate to hostile room (wolf auto-aggros)
-    await client.commandAndWaitRoom("s"); // gate
-    await client.commandAndWaitRoom("s"); // crossroads
-    await client.commandAndWaitRoom("e"); // forest edge
-    await client.commandAndWaitRoom("e"); // forest path — auto-aggro
+    // Navigate to deep forest. Its wolf may already be somewhat weakened by
+    // an earlier test's single spell hit (unlike the forest-path wolf,
+    // which "kill NPC, gain XP, get loot" reliably kills outright) — we
+    // tolerate it dying early below rather than assuming it survives a
+    // fixed number of hits.
+    await reachForestPathAlive(client);
+    await client.commandAndWaitRoom("e"); // deep forest — auto-aggro
     await client.tick(200);
 
-    // Attack multiple rounds — each should succeed (AP refreshes each round)
-    for (let i = 0; i < 3; i++) {
+    // Fleeing the forest-path wolf above may have spent AP. Wait long
+    // enough (dwarf con 15 -> 2 AP/tick, maxAp 4) to guarantee it's back
+    // at max regardless of where it started, before establishing the
+    // deterministic baseline below.
+    await client.tick(TICK_WAIT_MS * 2);
+    client.clearMessages();
+
+    // maxAp is 4 (dex 10) and attack costs 2 AP: two attacks drain it fully
+    // — unless the wolf dies first, in which case we've still exercised
+    // the drain from 4 to 2 (or 2 to 0) and that's enough.
+    client.command("attack wolf");
+    let update = await client.waitFor("character_update");
+    expect(update.ap).toBe(2);
+    let wolfAlive = client.getMessagesOfType("combat_end").length === 0;
+
+    if (wolfAlive) {
       client.clearMessages();
-      const text = await client.commandAndWait("attack wolf");
-      // Should either hit, miss, or kill — never "not enough AP"
-      expect(text).not.toContain("Not enough AP");
-      if (text.includes("slain") || text.includes("defeated") || text.includes("don't see")) break;
+      client.command("attack wolf");
+      update = await client.waitFor("character_update");
+      expect(update.ap).toBe(0);
+      wolfAlive = client.getMessagesOfType("combat_end").length === 0;
+    }
+
+    if (wolfAlive) {
+      // A third attack is refused for lack of AP.
+      const refused = await client.commandAndWait("attack wolf");
+      expect(refused).toContain("Not enough AP");
+
+      // Pulse combat regenerates AP only on the server's tick (dwarf con 15
+      // gives 2 AP/tick here, matching the attack cost exactly), so the
+      // next attempt should no longer be refused for lack of AP.
+      await client.tick(TICK_WAIT_MS);
+      const recovered = await client.commandAndWait("attack wolf");
+      expect(recovered).not.toContain("Not enough AP");
     }
 
     client.disconnect();
-  });
+  }, 400_000);
 
   test("stats shows AP values", async () => {
     const client = new TestClient("APStats");
@@ -392,33 +438,35 @@ describe("action points", () => {
 
 // ─── Multi-Target Combat ─────────────────────────────────────
 
-/** Navigate to spider-hollow (2 spiders) through hostile rooms, fleeing as needed */
-async function navigateToSpiderHollow(client: TestClient): Promise<void> {
-  await client.commandAndWaitRoom("s"); // gate
-  await client.commandAndWaitRoom("s"); // crossroads
-  await client.commandAndWaitRoom("e"); // forest-edge
+/**
+ * Navigate to spider-hollow (2 spiders) through hostile rooms, fleeing as
+ * needed. If a wolf kills us along the way, we respawn at town square —
+ * restart the whole approach from there rather than continuing to walk
+ * from a room we're no longer in. `attemptsLeft` is generous for the same
+ * reason as `reachForestPathAlive`: dying once isn't rare.
+ */
+async function navigateToSpiderHollow(client: TestClient, attemptsLeft = 6): Promise<void> {
+  if (attemptsLeft <= 0) {
+    throw new Error("Could not reach spider-hollow alive after several attempts");
+  }
 
   // forest-path has wolf — may auto-aggro
-  await client.commandAndWaitRoom("e");
-  await client.tick(200);
-  for (let i = 0; i < 20; i++) {
-    client.clearMessages();
-    const text = await client.commandAndWait("flee");
-    if (text.includes("escape") || text.includes("not in combat")) break;
-    if (text.includes("defeated")) break;
-  }
-  client.clearMessages();
+  await reachForestPathAlive(client);
 
   // deep-forest has wolf — may auto-aggro
   await client.commandAndWaitRoom("e");
   await client.tick(200);
-  for (let i = 0; i < 20; i++) {
-    client.clearMessages();
-    const text = await client.commandAndWait("flee");
-    if (text.includes("escape") || text.includes("not in combat")) break;
-    if (text.includes("defeated")) break;
-  }
+  const outcome = await fleeUntilClear(client);
   client.clearMessages();
+  if (outcome === "stuck") {
+    // Still mid-combat in deep-forest — we haven't moved, so restarting
+    // from town square would be wrong. Exceedingly rare in practice.
+    throw new Error("Stuck fleeing the deep-forest wolf — never escaped or died");
+  }
+  if (outcome === "died") {
+    await client.tick(300);
+    return navigateToSpiderHollow(client, attemptsLeft - 1);
+  }
 
   // spider-hollow — 2 spiders auto-aggro
   await client.commandAndWaitRoom("e");
@@ -444,7 +492,7 @@ describe("multi-target combat", () => {
     expect(inCombat).toBe(true);
 
     client.disconnect();
-  });
+  }, 600_000);
 
   test("all hostile NPCs retaliate each round", async () => {
     const client = new TestClient("MultiRetali");
@@ -454,8 +502,10 @@ describe("multi-target combat", () => {
     await navigateToSpiderHollow(client);
     client.clearMessages();
 
-    // Attack — both spiders should retaliate
-    const text = await client.commandAndWait("attack spider");
+    // Attack — both spiders should retaliate. Navigation above may have
+    // spent AP fleeing the wolves along the way, so wait for it to
+    // regenerate if needed before this attack lands.
+    const { text } = await actUntilApReady(client, "attack spider");
 
     // The narrative should mention at least one spider attack
     const hasAction =
@@ -463,39 +513,43 @@ describe("multi-target combat", () => {
     expect(hasAction).toBe(true);
 
     client.disconnect();
-  });
+  }, 600_000);
 
   test("killing one NPC continues combat with remaining", async () => {
     const client = new TestClient("MultiKill");
-    await client.connect(port, { classId: "warrior", raceId: "orc" });
+    await client.connect(port, { classId: "warrior", raceId: "dwarf" });
     await client.waitFor("room_state");
 
     await navigateToSpiderHollow(client);
     client.clearMessages();
 
-    // Fight until first spider dies or we die
+    // Fight until first spider dies or we die. AP only regenerates on the
+    // server tick, so a refused attack needs a tick wait before retrying,
+    // and the spiders get real chances to swing back while we wait.
     let combatText = "";
-    for (let i = 0; i < 30; i++) {
-      client.clearMessages();
-      const text = await client.commandAndWait("attack spider");
-      combatText += text + "\n";
+    let died = false;
+    for (let i = 0; i < 20; i++) {
+      const outcome = await actUntilApReady(client, "attack spider");
+      combatText += outcome.text + "\n";
 
-      if (text.includes("slain") || text.includes("defeated")) break;
-      if (text.includes("darkness") || text.includes("respawn")) break;
-      if (text.includes("not in combat")) break;
+      if (outcome.died) {
+        died = true;
+        break;
+      }
+      if (outcome.text.includes("slain") || outcome.text.includes("defeated")) break;
+      if (outcome.text.includes("not in combat")) break;
     }
 
     const validOutcome =
+      died ||
       combatText.includes("turn to face") ||
       combatText.includes("slain") ||
       combatText.includes("defeated") ||
-      combatText.includes("darkness") ||
-      combatText.includes("respawn") ||
       combatText.includes("not in combat");
     expect(validOutcome).toBe(true);
 
     client.disconnect();
-  });
+  }, 600_000);
 
   test("flee from multi-target combat resets all NPCs", async () => {
     const client = new TestClient("MultiFlee");
@@ -505,35 +559,19 @@ describe("multi-target combat", () => {
     await navigateToSpiderHollow(client);
     client.clearMessages();
 
-    let result: "escaped" | "died" | "no_combat" = "no_combat";
-    for (let i = 0; i < 15; i++) {
-      client.clearMessages();
-      const text = await client.commandAndWait("flee");
-      if (text.includes("escape")) {
-        result = "escaped";
-        break;
-      }
-      if (text.includes("not in combat") || text.includes("Just walk away")) {
-        result = "no_combat";
-        break;
-      }
-      if (text.includes("darkness") || text.includes("respawn")) {
-        result = "died";
-        break;
-      }
-    }
+    const result = await fleeUntilClear(client);
 
     if (result === "escaped") {
       await client.tick(100);
       const endMsgs = client.getMessagesOfType("combat_end");
       expect(endMsgs.length).toBeGreaterThan(0);
-      expect(endMsgs[0].reason).toBe("flee");
+      expect(endMsgs[endMsgs.length - 1].reason).toBe("flee");
     }
 
-    expect(["escaped", "died", "no_combat"]).toContain(result);
+    expect(result).not.toBe("stuck");
 
     client.disconnect();
-  });
+  }, 600_000);
 
   test("defend blocks attacks from all NPCs", async () => {
     const client = new TestClient("MultiDefend");
@@ -543,17 +581,24 @@ describe("multi-target combat", () => {
     await navigateToSpiderHollow(client);
     client.clearMessages();
 
-    const text = await client.commandAndWait("defend");
+    // Navigation above may have spent AP fleeing the wolves along the way.
+    const { text } = await actUntilApReady(client, "defend");
 
+    // "bracing" (not "brace") is the actual substring the success narrative
+    // uses ("You raise your guard, bracing for the next attack..."). Under
+    // pre-pulse semantics the player likely never reached this check alive
+    // (spiders dealt a free hit on aggro), which is why this typo went
+    // unnoticed — pulse combat's tick-only swings make the success path
+    // reachable.
     const hasDefend =
-      text.toLowerCase().includes("brace") ||
+      text.toLowerCase().includes("bracing") ||
       text.toLowerCase().includes("defend") ||
       text.toLowerCase().includes("spider") ||
       text.includes("not in combat");
     expect(hasDefend).toBe(true);
 
     client.disconnect();
-  });
+  }, 600_000);
 
   test("combat_start and combat_update include combatant info", async () => {
     const client = new TestClient("CombatUI");
@@ -586,5 +631,5 @@ describe("multi-target combat", () => {
     }
 
     client.disconnect();
-  });
+  }, 600_000);
 });

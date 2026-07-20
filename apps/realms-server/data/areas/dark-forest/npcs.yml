@@ -44,6 +44,7 @@ definitions:
       predator or prey.
     behavior: hostile
     level: 2
+    attackCooldown: 2
     art:
       - "   / \\   / \\   "
       - "  /   \\_/   \\  "

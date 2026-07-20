@@ -246,6 +246,10 @@ formulas:
     expression: "4 + floor((dex - 10) / 4)"
     min: 2
     max: 12
+  apRegen:
+    name: AP Regeneration
+    expression: "1 + floor((con - 10) / 4)"
+    min: 1
   carryWeight:
     name: Carry Weight
     expression: "50 + str * 5"
