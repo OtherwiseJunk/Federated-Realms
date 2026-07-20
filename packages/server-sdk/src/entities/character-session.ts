@@ -165,10 +165,6 @@ export class CharacterSession {
     return true;
   }
 
-  refreshAp(): void {
-    this.state.currentAp = this.state.maxAp;
-  }
-
   /**
    * Regenerate AP by the system's `apRegen` derived-stat formula (issue #24
    * pulse model). Falls back to 1/tick when the system defines no formula.

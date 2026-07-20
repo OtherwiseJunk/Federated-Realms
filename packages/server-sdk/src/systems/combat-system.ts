@@ -141,7 +141,6 @@ export class CombatSystem {
     session.combatTarget = npc.instanceId;
     npc.state = "combat";
     session.isDefending = false;
-    session.refreshAp();
 
     // Engage ALL hostile NPCs in the room
     this.engageAllHostiles(session);
@@ -228,7 +227,6 @@ export class CombatSystem {
     if (combatStarting) {
       session.combatTarget = npc.instanceId;
       npc.state = "combat";
-      session.refreshAp();
       // Engage all hostile NPCs in the room
       this.engageAllHostiles(session);
       session.send(
@@ -248,8 +246,6 @@ export class CombatSystem {
         session.sessionId,
       );
     } else {
-      // Refresh AP at the start of each round
-      session.refreshAp();
       if (session.combatTarget !== npc.instanceId) {
         session.combatTarget = npc.instanceId;
         npc.state = "combat";
@@ -260,7 +256,7 @@ export class CombatSystem {
     if (!session.spendAp(AP_COST.attack)) {
       this.sendCombat(
         session,
-        `Not enough AP to attack. Need ${AP_COST.attack}, have ${session.state.currentAp}.`,
+        `Not enough AP to attack. Need ${AP_COST.attack}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
@@ -353,12 +349,10 @@ export class CombatSystem {
       session.combatTarget = next.instanceId;
     }
 
-    // Refresh AP at start of round, then spend
-    session.refreshAp();
     if (!session.spendAp(AP_COST.defend)) {
       this.sendCombat(
         session,
-        `Not enough AP to defend. Need ${AP_COST.defend}, have ${session.state.currentAp}.`,
+        `Not enough AP to defend. Need ${AP_COST.defend}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
@@ -388,12 +382,10 @@ export class CombatSystem {
       return;
     }
 
-    // Refresh AP at start of round, then spend
-    session.refreshAp();
     if (!session.spendAp(AP_COST.flee)) {
       this.sendCombat(
         session,
-        `Not enough AP to flee. Need ${AP_COST.flee}, have ${session.state.currentAp}.`,
+        `Not enough AP to flee. Need ${AP_COST.flee}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
@@ -455,16 +447,13 @@ export class CombatSystem {
       return;
     }
 
-    // AP check in combat
-    if (session.inCombat) {
-      session.refreshAp();
-      if (!session.spendAp(AP_COST.useItem)) {
-        this.sendCombat(
-          session,
-          `Not enough AP to use an item. Need ${AP_COST.useItem}, have ${session.state.currentAp}.`,
-        );
-        return;
-      }
+    // AP check
+    if (!session.spendAp(AP_COST.useItem)) {
+      this.sendCombat(
+        session,
+        `Not enough AP to use an item. Need ${AP_COST.useItem}, have ${session.state.currentAp}. AP recovers each tick.`,
+      );
+      return;
     }
 
     const props = def.properties ?? {};
@@ -554,17 +543,14 @@ export class CombatSystem {
       return;
     }
 
-    // Check AP in combat
+    // Check AP
     const apCost = spell.apCost ?? AP_COST.castDefault;
-    if (session.inCombat) {
-      session.refreshAp();
-      if (!session.spendAp(apCost)) {
-        this.sendCombat(
-          session,
-          `Not enough AP to cast ${spell.name}. Need ${apCost}, have ${session.state.currentAp}.`,
-        );
-        return;
-      }
+    if (!session.spendAp(apCost)) {
+      this.sendCombat(
+        session,
+        `Not enough AP to cast ${spell.name}. Need ${apCost}, have ${session.state.currentAp}. AP recovers each tick.`,
+      );
+      return;
     }
 
     // Route by effect type

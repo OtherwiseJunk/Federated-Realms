@@ -55,15 +55,42 @@ function makeCombatSystem(npcs: NpcInstance[]): {
     FORMULAS,
   );
   session.combatTarget = npcs[0]?.instanceId ?? null;
-  session.refreshAp();
+  session.state.currentAp = session.state.maxAp;
 
   const npcManager = {
     getAllInRoom: () => npcs,
     getInstance: (id: string) => npcs.find((n) => n.instanceId === id),
     getDefinition: () => undefined,
+    damageNpc: () => false,
+    findInRoom: (_r: string, name: string) =>
+      npcs.find((n) => n.name.toLowerCase().includes(name.toLowerCase())),
   };
 
-  const world = { npcManager } as unknown as WorldManager;
+  const gameSystem = {
+    spells: {
+      firebolt: {
+        name: "Firebolt",
+        mpCost: 2,
+        apCost: 2,
+        target: "enemy",
+        effect: "damage",
+        power: 1,
+      },
+    },
+    classes: {
+      warrior: { spells: ["firebolt"] },
+    },
+  };
+
+  const world = {
+    npcManager,
+    gameSystem,
+    getRoom: () => ({
+      id: "test-area:spawn",
+      isSafe: () => false,
+      addGroundItem: () => {},
+    }),
+  } as unknown as WorldManager;
   const sessions = {} as unknown as SessionManager;
   const ctx: CombatContext = { world, sessions, broadcast: () => {} };
 
@@ -104,5 +131,37 @@ describe("CombatSystem defend", () => {
     }).toThrow();
 
     expect(session.state.attributes.dex).toBe(dexBefore);
+  });
+});
+
+describe("AP economy (issue #24)", () => {
+  test("attacks drain AP and are refused when the pool is empty", () => {
+    // maxAp with dex 12 = 4 + floor(2/4) = 4; attack costs 2.
+    const npc = makeNpc({ currentHp: 500, maxHp: 500 });
+    const { combat, session } = makeCombatSystem([npc]);
+    session.state.currentAp = session.state.maxAp; // 4
+
+    combat.attack(session); // 4 -> 2
+    expect(session.state.currentAp).toBe(2);
+    combat.attack(session); // 2 -> 0
+    expect(session.state.currentAp).toBe(0);
+
+    const hpBefore = npc.currentHp;
+    combat.attack(session); // refused — no AP
+    expect(session.state.currentAp).toBe(0);
+    expect(npc.currentHp).toBe(hpBefore);
+  });
+
+  test("a combat-opening spell charges AP like an opening attack", () => {
+    // Covers the #85 divergence: castSpell previously charged only if already in combat.
+    const npc = makeNpc({ currentHp: 500, maxHp: 500 });
+    const { combat, session } = makeCombatSystem([npc]);
+    session.combatTarget = null; // out of combat
+    npc.state = "idle";
+    session.state.currentAp = session.state.maxAp;
+    session.state.currentMp = 99;
+
+    combat.castSpell(session, "firebolt", "Goblin");
+    expect(session.state.currentAp).toBe(session.state.maxAp - 2);
   });
 });

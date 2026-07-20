@@ -296,7 +296,7 @@ describe("CharacterSession", () => {
   describe("combat", () => {
     test("AP spending", () => {
       const session = makeSession();
-      session.refreshAp();
+      session.state.currentAp = session.state.maxAp;
       const maxAp = session.state.maxAp;
 
       expect(session.spendAp(2)).toBe(true);
