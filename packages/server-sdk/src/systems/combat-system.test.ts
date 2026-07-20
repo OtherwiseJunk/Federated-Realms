@@ -131,9 +131,9 @@ describe("CombatSystem defend", () => {
     session.isDefending = true;
 
     expect(() => {
-      (combat as unknown as { resolveTickSwings: (s: CharacterSession) => void }).resolveTickSwings(
-        session,
-      );
+      (
+        combat as unknown as { resolveRoomSwings: (s: CharacterSession[]) => void }
+      ).resolveRoomSwings([session]);
     }).toThrow();
 
     expect(session.state.attributes.dex).toBe(dexBefore);
@@ -264,5 +264,75 @@ describe("pulse combat (issue #24)", () => {
     combat.attack(session, "Tiger"); // target switch onto the already-engaged tiger
 
     expect(tiger.ticksUntilSwing).toBe(1); // not re-seeded to 3
+  });
+
+  test("a shared NPC's wind-up decrements once per tick regardless of how many sessions fight it, and swings hit everyone engaged (regression)", () => {
+    // dex 30 -> +10 to hit: minimum roll (1) totals 11, matching a dex-12
+    // unarmored player's defense (10 + 1) exactly, so every swing lands
+    // deterministically. str 10 keeps damage (2, 4 on a crit) well under a
+    // level-1 player's ~26 HP, so neither session dies mid-test.
+    const wolf = makeNpc({
+      name: "Wolf",
+      attributes: { str: 10, dex: 30 },
+      attackCooldown: 2,
+      ticksUntilSwing: 2,
+      currentHp: 500,
+      maxHp: 500,
+    });
+
+    const alice = new CharacterSession(
+      "session-alice",
+      "did:plc:alice",
+      makeProfile(),
+      "test-area:spawn",
+      FORMULAS,
+    );
+    const bob = new CharacterSession(
+      "session-bob",
+      "did:plc:bob",
+      makeProfile(),
+      "test-area:spawn",
+      FORMULAS,
+    );
+    alice.combatTarget = wolf.instanceId;
+    bob.combatTarget = wolf.instanceId;
+
+    const npcManager = {
+      getAllInRoom: () => [wolf],
+      getInstance: (id: string) => (id === wolf.instanceId ? wolf : undefined),
+      getDefinition: () => undefined,
+      damageNpc: () => false,
+      findInRoom: () => wolf,
+    };
+    const world = {
+      npcManager,
+      gameSystem: { spells: {}, classes: {} },
+      getRoom: () => ({
+        id: "test-area:spawn",
+        isSafe: () => false,
+        addGroundItem: () => {},
+        removePlayer: () => {},
+        addPlayer: () => {},
+        toState: () => ({}),
+        title: "Spawn",
+      }),
+      getDefaultSpawnRoom: () => "test-area:spawn",
+    } as unknown as WorldManager;
+    const sessions = { getAllSessions: () => [alice, bob] } as unknown as SessionManager;
+    const combat = new CombatSystem({ world, sessions, broadcast: () => {} });
+
+    // Tick 1: two sessions share this NPC. If the counter were decremented
+    // once per session (the bug), it would already hit 0 and swing here.
+    combat.onTick();
+    expect(wolf.ticksUntilSwing).toBe(1);
+    expect(alice.state.currentHp).toBe(alice.state.maxHp);
+    expect(bob.state.currentHp).toBe(bob.state.maxHp);
+
+    // Tick 2: counter reaches 0 — the wolf swings once, at every session
+    // currently fighting it in that room.
+    combat.onTick();
+    expect(wolf.ticksUntilSwing).toBe(2); // swung, reset to attackCooldown
+    expect(alice.state.currentHp).toBeLessThan(alice.state.maxHp);
+    expect(bob.state.currentHp).toBeLessThan(bob.state.maxHp);
   });
 });

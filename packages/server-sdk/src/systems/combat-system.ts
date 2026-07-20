@@ -75,59 +75,83 @@ export class CombatSystem {
   /** Bonus to player AC while defending. */
   private static readonly DEFEND_AC_BONUS = 4;
 
-  /** All due combat NPCs swing at the player on this tick. Returns narrative lines and the killer, if any. */
-  private resolveTickSwings(session: CharacterSession): {
-    lines: string[];
-    killer?: NpcInstance;
-  } {
-    const combatNpcs = this.getCombatNpcs(session);
-    if (combatNpcs.length === 0) return { lines: [] };
+  /**
+   * Resolve NPC swings once per room, not once per session. An NPC's combat
+   * state (and its ticksUntilSwing wind-up counter) is shared, room-scoped
+   * state — if this were driven per-session, an NPC fought by two players in
+   * the same room would have its counter decremented twice per tick,
+   * corrupting its cooldown pacing. Grouping by room and swinging each due
+   * NPC at every session currently fighting in that room keeps the counter
+   * authoritative regardless of how many players are engaged, and makes a
+   * pack of players fight a pack of NPCs symmetrically: every hostile NPC in
+   * the room already retaliates against every player (see getCombatNpcs
+   * callers below); a due swing now lands on every such player in one pulse,
+   * rather than favoring whichever session's onTick iteration ran first.
+   */
+  private resolveRoomSwings(
+    sessions: CharacterSession[],
+  ): Map<string, { lines: string[]; killer?: NpcInstance }> {
+    const results = new Map<string, { lines: string[]; killer?: NpcInstance }>();
 
-    // Defending grants a temporary AC bonus, passed explicitly to the resolver.
-    // We do NOT mutate session attributes: an exception mid-loop would otherwise
-    // leave base dex permanently inflated (issue #56).
-    const acBonus = session.isDefending ? CombatSystem.DEFEND_AC_BONUS : 0;
+    const sessionsByRoom = new Map<string, CharacterSession[]>();
+    for (const session of sessions) {
+      if (!session.inCombat) continue;
+      const group = sessionsByRoom.get(session.currentRoom);
+      if (group) group.push(session);
+      else sessionsByRoom.set(session.currentRoom, [session]);
+    }
 
-    const allLines: string[] = [];
-    let killer: NpcInstance | undefined;
+    for (const [roomId, roomSessions] of sessionsByRoom) {
+      const combatNpcs = this.ctx.world.npcManager
+        .getAllInRoom(roomId)
+        .filter((npc) => npc.state === "combat");
 
-    for (const npc of combatNpcs) {
-      npc.ticksUntilSwing -= 1;
-      if (npc.ticksUntilSwing > 0) continue;
-      npc.ticksUntilSwing = npc.attackCooldown;
+      for (const npc of combatNpcs) {
+        npc.ticksUntilSwing -= 1;
+        if (npc.ticksUntilSwing > 0) continue;
+        npc.ticksUntilSwing = npc.attackCooldown;
 
-      const npcAttack = resolveNpcAttack(
-        npc.attributes,
-        npc.level,
-        npc.name,
-        session.state.attributes,
-        session.state.equipment,
-        acBonus,
-      );
+        for (const session of roomSessions) {
+          if (session.isDead) continue; // already died to an earlier NPC this tick
 
-      if (npcAttack.hit) {
-        session.takeDamage(npcAttack.damage);
-      }
+          // Defending grants a temporary AC bonus, passed explicitly to the
+          // resolver. We do NOT mutate session attributes: an exception
+          // mid-loop would otherwise leave base dex permanently inflated
+          // (issue #56).
+          const acBonus = session.isDefending ? CombatSystem.DEFEND_AC_BONUS : 0;
 
-      const narrative = formatAttackResult(
-        npc.name,
-        session.name,
-        npcAttack,
-        session.state.currentHp,
-        session.state.maxHp,
-      );
+          const npcAttack = resolveNpcAttack(
+            npc.attributes,
+            npc.level,
+            npc.name,
+            session.state.attributes,
+            session.state.equipment,
+            acBonus,
+          );
 
-      if (allLines.length > 0) allLines.push("");
-      allLines.push(...narrative.split("\n"));
+          if (npcAttack.hit) {
+            session.takeDamage(npcAttack.damage);
+          }
 
-      if (session.isDead) {
-        killer = npc;
-        break; // stop if player dies mid-round
+          const narrative = formatAttackResult(
+            npc.name,
+            session.name,
+            npcAttack,
+            session.state.currentHp,
+            session.state.maxHp,
+          );
+
+          const result = results.get(session.sessionId) ?? { lines: [] };
+          if (result.lines.length > 0) result.lines.push("");
+          result.lines.push(...narrative.split("\n"));
+          if (session.isDead) result.killer = npc;
+          results.set(session.sessionId, result);
+        }
       }
     }
 
     // Defend is a stance: it persists across ticks until the player's next action.
-    return { lines: allLines, killer };
+    return results;
   }
 
   /** Find the next alive combat NPC to auto-target after current target dies */
@@ -148,25 +172,30 @@ export class CombatSystem {
     session.combatTarget = null;
   }
 
-  /** Game-tick pulse: AP regen for every session, swings for sessions in combat. */
+  /** Game-tick pulse: AP regen for every session, then room-grouped NPC swings. */
   onTick(): void {
-    for (const session of this.ctx.sessions.getAllSessions()) {
-      const regenerated = session.regenAp();
+    const sessions = this.ctx.sessions.getAllSessions();
 
-      if (session.inCombat) {
-        const { lines, killer } = this.resolveTickSwings(session);
-        if (lines.length > 0) {
-          this.sendCombat(session, lines.join("\n"));
-          this.sendCharacterUpdate(session);
-          this.sendCombatUpdate(session);
-          if (session.isDead && killer) {
-            this.handlePlayerDeath(session, killer);
-          }
-          continue;
+    const regenerated = new Map<string, boolean>();
+    for (const session of sessions) {
+      regenerated.set(session.sessionId, session.regenAp());
+    }
+
+    const swingResults = this.resolveRoomSwings(sessions);
+
+    for (const session of sessions) {
+      const result = swingResults.get(session.sessionId);
+      if (result && result.lines.length > 0) {
+        this.sendCombat(session, result.lines.join("\n"));
+        this.sendCharacterUpdate(session);
+        this.sendCombatUpdate(session);
+        if (session.isDead && result.killer) {
+          this.handlePlayerDeath(session, result.killer);
         }
+        continue;
       }
 
-      if (regenerated) {
+      if (regenerated.get(session.sessionId)) {
         this.sendCharacterUpdate(session);
       }
     }
