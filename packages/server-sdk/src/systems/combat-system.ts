@@ -15,6 +15,7 @@
 
 import type { CharacterSession } from "../entities/character-session.js";
 import type { WorldManager } from "../world/world-manager.js";
+import type { Room } from "../world/room.js";
 import type { SessionManager } from "../server/session-manager.js";
 import type { NpcInstance } from "@realms/common";
 import type { ServerMessage } from "@realms/protocol";
@@ -159,6 +160,86 @@ export class CombatSystem {
     return this.getCombatNpcs(session).find((npc) => npc.currentHp > 0);
   }
 
+  /**
+   * Resolve the player's combat target by explicit name, falling back to the
+   * current combatTarget (auto-switching to the next alive combat NPC if the
+   * current one is gone). Returns undefined after already sending the
+   * appropriate player-facing message — callers should just `return` on
+   * undefined.
+   */
+  private resolveTarget(
+    session: CharacterSession,
+    room: Room,
+    targetName: string | undefined,
+    noTargetMessage: string,
+    notFoundMessage: string,
+  ): NpcInstance | undefined {
+    if (targetName) {
+      const npc = this.ctx.world.npcManager.findInRoom(room.id, targetName);
+      if (!npc) {
+        this.sendCombat(session, notFoundMessage);
+        return undefined;
+      }
+      return npc;
+    }
+
+    if (session.combatTarget) {
+      let npc = this.ctx.world.npcManager.getInstance(session.combatTarget);
+      if (!npc || npc.state === "dead") {
+        npc = this.findNextTarget(session);
+        if (!npc) {
+          session.combatTarget = null;
+          this.sendCombat(session, "Your target is no longer here. Combat ended.");
+          this.sendCombatEnd(session, "victory");
+          return undefined;
+        }
+        session.combatTarget = npc.instanceId;
+      }
+      return npc;
+    }
+
+    this.sendCombat(session, noTargetMessage);
+    return undefined;
+  }
+
+  /**
+   * Start combat with npc if the session isn't already fighting, sending the
+   * combat_start message and engaging every hostile in the room. If already
+   * in combat but targeting a different NPC, switches target and engages
+   * just that NPC (matching the existing per-action target-switch behavior).
+   */
+  private beginCombatIfNeeded(session: CharacterSession, room: Room, npc: NpcInstance): void {
+    const { broadcast } = this.ctx;
+
+    if (!session.inCombat) {
+      session.combatTarget = npc.instanceId;
+      this.engageNpc(npc);
+      this.engageAllHostiles(session);
+      session.send(
+        encodeMessage({
+          type: "combat_start",
+          target: npc.name,
+          combatants: this.buildCombatantInfo(session),
+        }),
+      );
+      broadcast(
+        room.id,
+        {
+          type: "narrative",
+          text: `${session.name} engages ${npc.name} in combat!`,
+          style: "combat",
+        },
+        session.sessionId,
+      );
+      return;
+    }
+
+    if (session.combatTarget !== npc.instanceId) {
+      session.combatTarget = npc.instanceId;
+      this.engageNpc(npc);
+    }
+  }
+
   /** Reset all combat NPCs in a room back to idle */
   private resetAllCombatNpcs(session: CharacterSession): void {
     for (const npc of this.getCombatNpcs(session)) {
@@ -258,62 +339,16 @@ export class CombatSystem {
       return;
     }
 
-    // Determine target
-    let npc: NpcInstance | undefined;
+    const npc = this.resolveTarget(
+      session,
+      room,
+      targetName,
+      "Attack what? Specify a target.",
+      `You don't see '${targetName}' here to attack.`,
+    );
+    if (!npc) return;
 
-    if (targetName) {
-      npc = world.npcManager.findInRoom(room.id, targetName);
-      if (!npc) {
-        this.sendCombat(session, `You don't see '${targetName}' here to attack.`);
-        return;
-      }
-    } else if (session.combatTarget) {
-      npc = world.npcManager.getInstance(session.combatTarget);
-      if (!npc || npc.state === "dead") {
-        // Try to find another combat NPC
-        npc = this.findNextTarget(session);
-        if (!npc) {
-          session.combatTarget = null;
-          this.sendCombat(session, "Your target is no longer here. Combat ended.");
-          this.sendCombatEnd(session, "victory");
-          return;
-        }
-        session.combatTarget = npc.instanceId;
-      }
-    } else {
-      this.sendCombat(session, "Attack what? Specify a target.");
-      return;
-    }
-
-    // Start combat if not already in it
-    const combatStarting = !session.inCombat;
-    if (combatStarting) {
-      session.combatTarget = npc.instanceId;
-      this.engageNpc(npc);
-      // Engage all hostile NPCs in the room
-      this.engageAllHostiles(session);
-      session.send(
-        encodeMessage({
-          type: "combat_start",
-          target: npc.name,
-          combatants: this.buildCombatantInfo(session),
-        }),
-      );
-      broadcast(
-        room.id,
-        {
-          type: "narrative",
-          text: `${session.name} engages ${npc.name} in combat!`,
-          style: "combat",
-        },
-        session.sessionId,
-      );
-    } else {
-      if (session.combatTarget !== npc.instanceId) {
-        session.combatTarget = npc.instanceId;
-        this.engageNpc(npc);
-      }
-    }
+    this.beginCombatIfNeeded(session, room, npc);
 
     // Check AP
     if (!session.spendAp(AP_COST.attack)) {
@@ -624,57 +659,16 @@ export class CombatSystem {
       return;
     }
 
-    // Determine target
-    let npc: NpcInstance | undefined;
-    if (targetName) {
-      npc = world.npcManager.findInRoom(room.id, targetName);
-      if (!npc) {
-        this.sendCombat(session, `You don't see '${targetName}' here to target.`);
-        return;
-      }
-    } else if (session.combatTarget) {
-      npc = world.npcManager.getInstance(session.combatTarget);
-      if (!npc || npc.state === "dead") {
-        npc = this.findNextTarget(session);
-        if (!npc) {
-          session.combatTarget = null;
-          this.sendCombat(session, "Your target is no longer here.");
-          this.sendCombatEnd(session, "victory");
-          return;
-        }
-        session.combatTarget = npc.instanceId;
-      }
-    } else {
-      this.sendCombat(session, `Cast ${spell.name} at whom? Specify a target.`);
-      return;
-    }
+    const npc = this.resolveTarget(
+      session,
+      room,
+      targetName,
+      `Cast ${spell.name} at whom? Specify a target.`,
+      `You don't see '${targetName}' here to target.`,
+    );
+    if (!npc) return;
 
-    // Start combat if not already in it
-    const combatStarting = !session.inCombat;
-    if (combatStarting) {
-      session.combatTarget = npc.instanceId;
-      this.engageNpc(npc);
-      this.engageAllHostiles(session);
-      session.send(
-        encodeMessage({
-          type: "combat_start",
-          target: npc.name,
-          combatants: this.buildCombatantInfo(session),
-        }),
-      );
-      broadcast(
-        room.id,
-        {
-          type: "narrative",
-          text: `${session.name} engages ${npc.name} in combat!`,
-          style: "combat",
-        },
-        session.sessionId,
-      );
-    } else if (session.combatTarget !== npc.instanceId) {
-      session.combatTarget = npc.instanceId;
-      this.engageNpc(npc);
-    }
+    this.beginCombatIfNeeded(session, room, npc);
 
     session.isDefending = false;
 

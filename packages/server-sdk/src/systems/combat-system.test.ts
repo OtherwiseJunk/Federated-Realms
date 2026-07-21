@@ -336,3 +336,69 @@ describe("pulse combat (issue #24)", () => {
     expect(bob.state.currentHp).toBeLessThan(bob.state.maxHp);
   });
 });
+
+describe("target resolution and combat-start (issue #85)", () => {
+  test("attack() ends combat when the current target is gone and no other NPC remains", () => {
+    const deadNpc = makeNpc({ state: "dead" });
+    const { combat, session } = makeCombatSystem([deadNpc]);
+    session.combatTarget = deadNpc.instanceId;
+    session.state.currentAp = session.state.maxAp;
+
+    combat.attack(session);
+
+    expect(session.combatTarget).toBeNull();
+    expect(session.inCombat).toBe(false);
+  });
+
+  test("castAttackSpell() ends combat when the current target is gone and no other NPC remains", () => {
+    const deadNpc = makeNpc({ state: "dead" });
+    const { combat, session } = makeCombatSystem([deadNpc]);
+    session.combatTarget = deadNpc.instanceId;
+    session.state.currentAp = session.state.maxAp;
+    session.state.currentMp = 99;
+
+    combat.castSpell(session, "firebolt", undefined);
+
+    expect(session.combatTarget).toBeNull();
+    expect(session.inCombat).toBe(false);
+  });
+
+  test("attack() starts combat and engages all hostiles in the room on first contact", () => {
+    const goblin = makeNpc({ state: "idle", behavior: "hostile" });
+    const bystander = makeNpc({
+      instanceId: "npc-2",
+      name: "Rat",
+      state: "idle",
+      behavior: "hostile",
+    });
+    const { combat, session } = makeCombatSystem([goblin, bystander]);
+    session.combatTarget = null;
+    session.state.currentAp = session.state.maxAp;
+
+    combat.attack(session, "Goblin");
+
+    expect(session.inCombat).toBe(true);
+    expect(goblin.state).toBe("combat");
+    expect(bystander.state).toBe("combat"); // engageAllHostiles fired
+  });
+
+  test("castAttackSpell() starts combat and engages all hostiles in the room on first contact", () => {
+    const goblin = makeNpc({ state: "idle", behavior: "hostile" });
+    const bystander = makeNpc({
+      instanceId: "npc-2",
+      name: "Rat",
+      state: "idle",
+      behavior: "hostile",
+    });
+    const { combat, session } = makeCombatSystem([goblin, bystander]);
+    session.combatTarget = null;
+    session.state.currentAp = session.state.maxAp;
+    session.state.currentMp = 99;
+
+    combat.castSpell(session, "firebolt", "Goblin");
+
+    expect(session.inCombat).toBe(true);
+    expect(goblin.state).toBe("combat");
+    expect(bystander.state).toBe("combat");
+  });
+});
