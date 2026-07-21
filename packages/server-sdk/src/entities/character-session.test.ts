@@ -385,6 +385,18 @@ describe("CharacterSession", () => {
       expect(session.state.currentHp).toBe(session.state.maxHp);
       expect(session.state.currentMp).toBe(session.state.maxMp);
     });
+
+    test("addXp uses the same curve as @realms/common's checkLevelUp (issue #85)", () => {
+      const session = makeSession();
+      // Level 1 -> 2 requires xpForLevel(2) = 2*(2-1)*50 = 100 xp.
+      const justUnder = session.addXp(99);
+      expect(justUnder).toBeNull();
+      expect(session.state.level).toBe(1);
+
+      const leveled = session.addXp(1); // total 100, crosses the threshold
+      expect(leveled).toBe(2);
+      expect(session.state.level).toBe(2);
+    });
   });
 
   describe("respawn", () => {

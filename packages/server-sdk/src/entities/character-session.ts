@@ -6,6 +6,7 @@ import {
   withDefaultFormulas,
   addItemToStacks,
   splitItemStack,
+  checkLevelUp,
 } from "@realms/common";
 import type { ServerWebSocket } from "bun";
 import { AttestationTracker } from "../atproto/attestation-tracker.js";
@@ -206,7 +207,7 @@ export class CharacterSession {
   addXp(amount: number): number | null {
     this.state.experience += amount;
 
-    const newLevel = this.checkLevelUp();
+    const newLevel = checkLevelUp(this.state.level, this.state.experience);
     if (newLevel > this.state.level) {
       this.state.level = newLevel;
       this.recalculateDerived();
@@ -216,15 +217,6 @@ export class CharacterSession {
       return newLevel;
     }
     return null;
-  }
-
-  private checkLevelUp(): number {
-    let level = this.state.level;
-    const xpForLevel = (l: number) => l * (l - 1) * 50;
-    while (this.state.experience >= xpForLevel(level + 1)) {
-      level++;
-    }
-    return level;
   }
 
   private recalculateDerived(): void {
