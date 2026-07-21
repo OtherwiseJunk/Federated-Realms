@@ -18,6 +18,12 @@
             "knownValues": ["hostile", "merchant", "questgiver", "wanderer", "static"]
           },
           "level": { "type": "integer", "minimum": 1 },
+          "attackCooldown": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Optional pacing hint for pulse-combat systems: game ticks between this NPC's attacks (1 = every tick). Systems with a different combat pacing model may ignore it."
+          },
           "attributes": {
             "type": "unknown",
             "description": "Open map of attribute ID -> value, using server's attribute schema"

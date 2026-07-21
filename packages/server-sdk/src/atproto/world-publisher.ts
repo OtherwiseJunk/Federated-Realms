@@ -90,6 +90,7 @@ export class WorldPublisher {
         description: npc.description,
         behavior: npc.behavior,
         level: npc.level,
+        attackCooldown: npc.attackCooldown,
         attributes: npc.attributes,
         dialogue: npc.dialogue,
         art: npc.art?.length ? npc.art : undefined,

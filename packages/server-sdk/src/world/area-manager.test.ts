@@ -236,6 +236,58 @@ describe("AreaManager quest loading", () => {
   });
 });
 
+const COOLDOWN_MANIFEST_YML = `title: Test Area
+description: An area for testing.
+`;
+
+describe("AreaManager attackCooldown loading", () => {
+  let tempDir: string;
+
+  afterEach(async () => {
+    if (tempDir) await rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function loadNpcs(npcsYml: string): Promise<NpcManager> {
+    tempDir = await mkdtemp(join(tmpdir(), "area-manager-cooldown-"));
+    const areaPath = join(tempDir, "test-area");
+    await mkdir(areaPath);
+    await writeFile(join(areaPath, "manifest.yml"), COOLDOWN_MANIFEST_YML);
+    await writeFile(join(areaPath, "npcs.yml"), npcsYml);
+
+    const npcManager = new NpcManager();
+    const areaManager = new AreaManager(npcManager, new QuestManager(), new CraftingSystem());
+    await areaManager.loadFromDirectory(tempDir);
+    return npcManager;
+  }
+
+  test("passes attackCooldown through to the registered definition", async () => {
+    const npcManager = await loadNpcs(
+      "definitions:\n" +
+        "  - id: tiger\n    name: Tiger\n    description: A big cat.\n" +
+        "    behavior: hostile\n    level: 3\n    attackCooldown: 3\n",
+    );
+    expect(npcManager.getDefinition("test-area:tiger")?.attackCooldown).toBe(3);
+  });
+
+  test("leaves attackCooldown undefined when YAML omits it", async () => {
+    const npcManager = await loadNpcs(
+      "definitions:\n" +
+        "  - id: rat\n    name: Rat\n    description: A rat.\n    behavior: hostile\n",
+    );
+    expect(npcManager.getDefinition("test-area:rat")?.attackCooldown).toBeUndefined();
+  });
+
+  test("rejects a non-positive attackCooldown with id context", async () => {
+    await expect(
+      loadNpcs(
+        "definitions:\n" +
+          "  - id: broken\n    name: Broken\n    description: x\n" +
+          "    behavior: hostile\n    attackCooldown: 0\n",
+      ),
+    ).rejects.toThrow(/broken.*attackCooldown/);
+  });
+});
+
 const ENUM_MANIFEST_YML = `title: Enum Area
 description: An area for enum validation tests.
 `;

@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
-import { TestClient, startServer, stopServer } from "../helpers.ts";
+import { TestClient, startServer, stopServer, fleeUntilClear } from "../helpers.ts";
 
 let port: number;
 let serverProc: Subprocess;
@@ -99,14 +99,13 @@ describe("full adventure walkthrough", () => {
     // 14. Push deeper into the forest (wolf may or may not be here — previous tests may have killed it)
     room = await hero.commandAndWaitRoom("e"); // forest path
 
-    // Flee from auto-aggro'd wolf if present
+    // Flee from auto-aggro'd wolf if present. Pulse combat regenerates AP
+    // only on the server's tick, so a plain retry loop with no wait between
+    // attempts burns through AP (and then the rate limit) without ever
+    // resolving combat.
     await hero.tick(200);
-    for (let i = 0; i < 20; i++) {
-      hero.clearMessages();
-      const fleeText = await hero.commandAndWait("flee");
-      if (fleeText.includes("escape") || fleeText.includes("not in combat")) break;
-      if (fleeText.includes("defeated")) break;
-    }
+    await fleeUntilClear(hero);
+    hero.clearMessages();
 
     // 15. Visit the mushroom grove
     room = await hero.commandAndWaitRoom("n"); // mushroom grove
@@ -138,5 +137,5 @@ describe("full adventure walkthrough", () => {
     expect(text).toContain("Movement:");
 
     hero.disconnect();
-  });
+  }, 300_000);
 });

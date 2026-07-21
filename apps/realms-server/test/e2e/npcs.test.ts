@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
-import { TestClient, startServer, stopServer } from "../helpers.ts";
+import { TestClient, startServer, stopServer, fleeUntilClear } from "../helpers.ts";
 
 let port: number;
 let serverProc: Subprocess;
@@ -84,22 +84,21 @@ describe("NPCs", () => {
     await client.commandAndWaitRoom("e"); // forest edge
     await client.commandAndWaitRoom("e"); // forest path
 
-    // Flee from auto-aggro'd wolf
+    // Flee from auto-aggro'd wolf. Pulse combat regenerates AP only on
+    // the server's tick, so a plain retry loop with no wait between
+    // attempts burns through AP (and then the rate limit) without ever
+    // resolving combat.
     await client.tick(200);
-    for (let i = 0; i < 20; i++) {
-      client.clearMessages();
-      const fleeText = await client.commandAndWait("flee");
-      if (fleeText.includes("escape") || fleeText.includes("not in combat")) break;
-      if (fleeText.includes("defeated")) break;
-    }
+    await fleeUntilClear(client);
     client.clearMessages();
 
-    // Try to talk to the wolf (hostile NPC) — should fail
+    // Try to talk to the wolf (hostile NPC) — should fail. If we died
+    // fleeing and respawned elsewhere, "don't see" covers that too.
     const text = await client.commandAndWait("talk wolf");
     const hostile =
       text.toLowerCase().includes("interested in talking") ||
       text.toLowerCase().includes("don't see");
     expect(hostile).toBe(true);
     client.disconnect();
-  });
+  }, 300_000);
 });

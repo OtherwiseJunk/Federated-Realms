@@ -5,7 +5,8 @@
  * - Starting encounters (player attacks or NPC aggros)
  * - Multi-NPC combat: all hostile NPCs in a room fight together
  * - Resolving player actions (attack, defend, flee, use item, cast)
- * - NPC retaliation: ALL combat NPCs attack after each player action
+ * - NPC swings: resolved only from the game-tick pulse (onTick), gated by each
+ *   NPC's per-instance attackCooldown/ticksUntilSwing counter — not by player actions
  * - Death handling (player respawn, NPC loot/XP/respawn)
  *
  * Each player action produces a batched narrative (all events in one message)
@@ -60,56 +61,97 @@ export class CombatSystem {
       .getAllInRoom(session.currentRoom)
       .filter((npc) => npc.behavior === "hostile" && npc.state === "idle");
     for (const npc of hostiles) {
-      npc.state = "combat";
+      this.engageNpc(npc);
     }
+  }
+
+  /** Put an NPC into combat and seed its swing wind-up. Idempotent: re-engaging (e.g. a target switch) must not reset an in-progress wind-up. */
+  private engageNpc(npc: NpcInstance): void {
+    if (npc.state === "combat") return;
+    npc.state = "combat";
+    npc.ticksUntilSwing = npc.attackCooldown;
   }
 
   /** Bonus to player AC while defending. */
   private static readonly DEFEND_AC_BONUS = 4;
 
-  /** All combat NPCs in the room retaliate against the player. Returns narrative lines. */
-  private allNpcsRetaliate(session: CharacterSession): string[] {
-    const combatNpcs = this.getCombatNpcs(session);
-    if (combatNpcs.length === 0) return [];
+  /**
+   * Resolve NPC swings once per room, not once per session. An NPC's combat
+   * state (and its ticksUntilSwing wind-up counter) is shared, room-scoped
+   * state — if this were driven per-session, an NPC fought by two players in
+   * the same room would have its counter decremented twice per tick,
+   * corrupting its cooldown pacing. Grouping by room and swinging each due
+   * NPC at every session currently fighting in that room keeps the counter
+   * authoritative regardless of how many players are engaged, and makes a
+   * pack of players fight a pack of NPCs symmetrically: every hostile NPC in
+   * the room already retaliates against every player (see getCombatNpcs
+   * callers below); a due swing now lands on every such player in one pulse,
+   * rather than favoring whichever session's onTick iteration ran first.
+   */
+  private resolveRoomSwings(
+    sessions: CharacterSession[],
+  ): Map<string, { lines: string[]; killer?: NpcInstance }> {
+    const results = new Map<string, { lines: string[]; killer?: NpcInstance }>();
 
-    // Defending grants a temporary AC bonus, passed explicitly to the resolver.
-    // We do NOT mutate session attributes: an exception mid-loop would otherwise
-    // leave base dex permanently inflated (issue #56).
-    const acBonus = session.isDefending ? CombatSystem.DEFEND_AC_BONUS : 0;
-
-    const allLines: string[] = [];
-    for (const npc of combatNpcs) {
-      const npcAttack = resolveNpcAttack(
-        npc.attributes,
-        npc.level,
-        npc.name,
-        session.state.attributes,
-        session.state.equipment,
-        acBonus,
-      );
-
-      if (npcAttack.hit) {
-        session.takeDamage(npcAttack.damage);
-      }
-
-      const narrative = formatAttackResult(
-        npc.name,
-        session.name,
-        npcAttack,
-        session.state.currentHp,
-        session.state.maxHp,
-      );
-
-      if (allLines.length > 0) allLines.push("");
-      allLines.push(...narrative.split("\n"));
-
-      if (session.isDead) break; // stop if player dies mid-round
+    const sessionsByRoom = new Map<string, CharacterSession[]>();
+    for (const session of sessions) {
+      if (!session.inCombat) continue;
+      const group = sessionsByRoom.get(session.currentRoom);
+      if (group) group.push(session);
+      else sessionsByRoom.set(session.currentRoom, [session]);
     }
 
-    // The defend bonus lasts for this retaliation round only.
-    session.isDefending = false;
+    for (const [roomId, roomSessions] of sessionsByRoom) {
+      const combatNpcs = this.ctx.world.npcManager
+        .getAllInRoom(roomId)
+        .filter((npc) => npc.state === "combat");
 
-    return allLines;
+      for (const npc of combatNpcs) {
+        npc.ticksUntilSwing -= 1;
+        if (npc.ticksUntilSwing > 0) continue;
+        npc.ticksUntilSwing = npc.attackCooldown;
+
+        for (const session of roomSessions) {
+          if (session.isDead) continue; // already died to an earlier NPC this tick
+
+          // Defending grants a temporary AC bonus, passed explicitly to the
+          // resolver. We do NOT mutate session attributes: an exception
+          // mid-loop would otherwise leave base dex permanently inflated
+          // (issue #56).
+          const acBonus = session.isDefending ? CombatSystem.DEFEND_AC_BONUS : 0;
+
+          const npcAttack = resolveNpcAttack(
+            npc.attributes,
+            npc.level,
+            npc.name,
+            session.state.attributes,
+            session.state.equipment,
+            acBonus,
+          );
+
+          if (npcAttack.hit) {
+            session.takeDamage(npcAttack.damage);
+          }
+
+          const narrative = formatAttackResult(
+            npc.name,
+            session.name,
+            npcAttack,
+            session.state.currentHp,
+            session.state.maxHp,
+          );
+
+          const result = results.get(session.sessionId) ?? { lines: [] };
+          if (result.lines.length > 0) result.lines.push("");
+          result.lines.push(...narrative.split("\n"));
+          if (session.isDead) result.killer = npc;
+          results.set(session.sessionId, result);
+        }
+      }
+    }
+
+    // Defend is a stance: it persists across ticks until the player's next action.
+    return results;
   }
 
   /** Find the next alive combat NPC to auto-target after current target dies */
@@ -130,6 +172,35 @@ export class CombatSystem {
     session.combatTarget = null;
   }
 
+  /** Game-tick pulse: AP regen for every session, then room-grouped NPC swings. */
+  onTick(): void {
+    const sessions = this.ctx.sessions.getAllSessions();
+
+    const regenerated = new Map<string, boolean>();
+    for (const session of sessions) {
+      regenerated.set(session.sessionId, session.regenAp());
+    }
+
+    const swingResults = this.resolveRoomSwings(sessions);
+
+    for (const session of sessions) {
+      const result = swingResults.get(session.sessionId);
+      if (result && result.lines.length > 0) {
+        this.sendCombat(session, result.lines.join("\n"));
+        this.sendCharacterUpdate(session);
+        this.sendCombatUpdate(session);
+        if (session.isDead && result.killer) {
+          this.handlePlayerDeath(session, result.killer);
+        }
+        continue;
+      }
+
+      if (regenerated.get(session.sessionId)) {
+        this.sendCharacterUpdate(session);
+      }
+    }
+  }
+
   // ── Public Combat Actions ──
 
   /** Hostile NPC initiates combat with a player on room entry */
@@ -139,9 +210,8 @@ export class CombatSystem {
     const { broadcast } = this.ctx;
 
     session.combatTarget = npc.instanceId;
-    npc.state = "combat";
+    this.engageNpc(npc);
     session.isDefending = false;
-    session.refreshAp();
 
     // Engage ALL hostile NPCs in the room
     this.engageAllHostiles(session);
@@ -163,10 +233,6 @@ export class CombatSystem {
       lines.push(`${npc.name} attacks you!`);
     }
 
-    // All combat NPCs get a free opening attack
-    const retaliationLines = this.allNpcsRetaliate(session);
-    lines.push(...retaliationLines);
-
     this.sendCombat(session, lines.join("\n"));
     broadcast(
       session.currentRoom,
@@ -179,10 +245,6 @@ export class CombatSystem {
     );
     this.sendCharacterUpdate(session);
     this.sendCombatUpdate(session);
-
-    if (session.isDead) {
-      this.handlePlayerDeath(session, npc);
-    }
   }
 
   /** Player attacks an NPC */
@@ -227,8 +289,7 @@ export class CombatSystem {
     const combatStarting = !session.inCombat;
     if (combatStarting) {
       session.combatTarget = npc.instanceId;
-      npc.state = "combat";
-      session.refreshAp();
+      this.engageNpc(npc);
       // Engage all hostile NPCs in the room
       this.engageAllHostiles(session);
       session.send(
@@ -248,11 +309,9 @@ export class CombatSystem {
         session.sessionId,
       );
     } else {
-      // Refresh AP at the start of each round
-      session.refreshAp();
       if (session.combatTarget !== npc.instanceId) {
         session.combatTarget = npc.instanceId;
-        npc.state = "combat";
+        this.engageNpc(npc);
       }
     }
 
@@ -260,7 +319,7 @@ export class CombatSystem {
     if (!session.spendAp(AP_COST.attack)) {
       this.sendCombat(
         session,
-        `Not enough AP to attack. Need ${AP_COST.attack}, have ${session.state.currentAp}.`,
+        `Not enough AP to attack. Need ${AP_COST.attack}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
@@ -289,14 +348,6 @@ export class CombatSystem {
       const deathLines = this.handleNpcDeath(session, npc);
       lines.push(...deathLines);
 
-      // If combat continues (other NPCs remain), all remaining NPCs retaliate
-      if (session.inCombat) {
-        const retaliationLines = this.allNpcsRetaliate(session);
-        if (retaliationLines.length > 0) {
-          lines.push("", ...retaliationLines);
-        }
-      }
-
       this.sendCombat(session, lines.join("\n"));
       broadcast(
         room.id,
@@ -304,17 +355,8 @@ export class CombatSystem {
         session.sessionId,
       );
       this.sendCombatUpdate(session);
-
-      if (session.isDead) {
-        const killer = this.getCombatNpcs(session)[0] ?? npc;
-        this.handlePlayerDeath(session, killer);
-      }
       return;
     }
-
-    // All combat NPCs retaliate
-    const retaliationLines = this.allNpcsRetaliate(session);
-    lines.push("", ...retaliationLines);
 
     // Send combined narrative
     this.sendCombat(session, lines.join("\n"));
@@ -325,12 +367,6 @@ export class CombatSystem {
     );
     this.sendCharacterUpdate(session);
     this.sendCombatUpdate(session);
-
-    // Check if player died
-    if (session.isDead) {
-      const killer = this.getCombatNpcs(session)[0] ?? npc;
-      this.handlePlayerDeath(session, killer);
-    }
   }
 
   /** Player defends (reduces incoming damage for this round) */
@@ -353,12 +389,10 @@ export class CombatSystem {
       session.combatTarget = next.instanceId;
     }
 
-    // Refresh AP at start of round, then spend
-    session.refreshAp();
     if (!session.spendAp(AP_COST.defend)) {
       this.sendCombat(
         session,
-        `Not enough AP to defend. Need ${AP_COST.defend}, have ${session.state.currentAp}.`,
+        `Not enough AP to defend. Need ${AP_COST.defend}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
@@ -367,18 +401,9 @@ export class CombatSystem {
     const lines: string[] = [];
     lines.push("You raise your guard, bracing for the next attack. (+4 AC)");
 
-    // All combat NPCs attack
-    const retaliationLines = this.allNpcsRetaliate(session);
-    lines.push("", ...retaliationLines);
-
     this.sendCombat(session, lines.join("\n"));
     this.sendCharacterUpdate(session);
     this.sendCombatUpdate(session);
-
-    if (session.isDead) {
-      const killer = this.getCombatNpcs(session)[0] ?? currentNpc!;
-      this.handlePlayerDeath(session, killer);
-    }
   }
 
   /** Player attempts to flee */
@@ -388,15 +413,15 @@ export class CombatSystem {
       return;
     }
 
-    // Refresh AP at start of round, then spend
-    session.refreshAp();
     if (!session.spendAp(AP_COST.flee)) {
       this.sendCombat(
         session,
-        `Not enough AP to flee. Need ${AP_COST.flee}, have ${session.state.currentAp}.`,
+        `Not enough AP to flee. Need ${AP_COST.flee}, have ${session.state.currentAp}. AP recovers each tick.`,
       );
       return;
     }
+
+    session.isDefending = false;
 
     const { broadcast } = this.ctx;
     const dex = session.state.attributes.dex;
@@ -417,27 +442,14 @@ export class CombatSystem {
       // All NPCs return to idle
       this.resetAllCombatNpcs(session);
       session.combatTarget = null;
-      session.isDefending = false;
       this.sendCombatEnd(session, "flee");
     } else {
       const lines: string[] = [];
       lines.push("You try to flee but can't get away!");
 
-      // All combat NPCs retaliate on failed flee
-      const retaliationLines = this.allNpcsRetaliate(session);
-      if (retaliationLines.length > 0) {
-        lines.push("", ...retaliationLines);
-      }
-
       this.sendCombat(session, lines.join("\n"));
       this.sendCharacterUpdate(session);
       this.sendCombatUpdate(session);
-
-      if (session.isDead) {
-        const killer =
-          combatNpcs[0] ?? this.ctx.world.npcManager.getInstance(session.combatTarget!)!;
-        this.handlePlayerDeath(session, killer);
-      }
     }
   }
 
@@ -455,17 +467,16 @@ export class CombatSystem {
       return;
     }
 
-    // AP check in combat
-    if (session.inCombat) {
-      session.refreshAp();
-      if (!session.spendAp(AP_COST.useItem)) {
-        this.sendCombat(
-          session,
-          `Not enough AP to use an item. Need ${AP_COST.useItem}, have ${session.state.currentAp}.`,
-        );
-        return;
-      }
+    // AP check
+    if (!session.spendAp(AP_COST.useItem)) {
+      this.sendCombat(
+        session,
+        `Not enough AP to use an item. Need ${AP_COST.useItem}, have ${session.state.currentAp}. AP recovers each tick.`,
+      );
+      return;
     }
+
+    session.isDefending = false;
 
     const props = def.properties ?? {};
     const lines: string[] = [];
@@ -492,25 +503,10 @@ export class CombatSystem {
       session.removeItem(itemName, 1);
     }
 
-    // If in combat, all NPCs retaliate after item use
-    if (session.inCombat) {
-      const retaliationLines = this.allNpcsRetaliate(session);
-      if (retaliationLines.length > 0) {
-        lines.push("", ...retaliationLines);
-      }
-    }
-
     this.sendCombat(session, lines.join("\n"));
     this.sendCharacterUpdate(session);
     this.sendInventoryUpdate(session);
     if (session.inCombat) this.sendCombatUpdate(session);
-
-    if (session.isDead && session.inCombat) {
-      const killer =
-        this.getCombatNpcs(session)[0] ??
-        this.ctx.world.npcManager.getInstance(session.combatTarget!)!;
-      this.handlePlayerDeath(session, killer);
-    }
   }
 
   /** Player casts a spell (in or out of combat) */
@@ -554,17 +550,14 @@ export class CombatSystem {
       return;
     }
 
-    // Check AP in combat
+    // Check AP
     const apCost = spell.apCost ?? AP_COST.castDefault;
-    if (session.inCombat) {
-      session.refreshAp();
-      if (!session.spendAp(apCost)) {
-        this.sendCombat(
-          session,
-          `Not enough AP to cast ${spell.name}. Need ${apCost}, have ${session.state.currentAp}.`,
-        );
-        return;
-      }
+    if (!session.spendAp(apCost)) {
+      this.sendCombat(
+        session,
+        `Not enough AP to cast ${spell.name}. Need ${apCost}, have ${session.state.currentAp}. AP recovers each tick.`,
+      );
+      return;
     }
 
     // Route by effect type
@@ -578,6 +571,8 @@ export class CombatSystem {
   }
 
   private castSelfSpell(session: CharacterSession, spell: SpellDef): void {
+    session.isDefending = false;
+
     // Spend MP
     session.state.currentMp -= spell.mpCost;
 
@@ -614,24 +609,9 @@ export class CombatSystem {
       session.state.attributes.str += result.amount;
     }
 
-    // All combat NPCs retaliate if in combat
-    if (session.inCombat) {
-      const retaliationLines = this.allNpcsRetaliate(session);
-      if (retaliationLines.length > 0) {
-        lines.push("", ...retaliationLines);
-      }
-    }
-
     this.sendCombat(session, lines.join("\n"));
     this.sendCharacterUpdate(session);
     if (session.inCombat) this.sendCombatUpdate(session);
-
-    if (session.isDead && session.inCombat) {
-      const killer =
-        this.getCombatNpcs(session)[0] ??
-        this.ctx.world.npcManager.getInstance(session.combatTarget!)!;
-      this.handlePlayerDeath(session, killer);
-    }
   }
 
   private castAttackSpell(session: CharacterSession, spell: SpellDef, targetName?: string): void {
@@ -673,7 +653,7 @@ export class CombatSystem {
     const combatStarting = !session.inCombat;
     if (combatStarting) {
       session.combatTarget = npc.instanceId;
-      npc.state = "combat";
+      this.engageNpc(npc);
       this.engageAllHostiles(session);
       session.send(
         encodeMessage({
@@ -693,7 +673,7 @@ export class CombatSystem {
       );
     } else if (session.combatTarget !== npc.instanceId) {
       session.combatTarget = npc.instanceId;
-      npc.state = "combat";
+      this.engageNpc(npc);
     }
 
     session.isDefending = false;
@@ -719,14 +699,6 @@ export class CombatSystem {
       const deathLines = this.handleNpcDeath(session, npc);
       lines.push(...deathLines);
 
-      // Remaining NPCs still retaliate
-      if (session.inCombat) {
-        const retaliationLines = this.allNpcsRetaliate(session);
-        if (retaliationLines.length > 0) {
-          lines.push("", ...retaliationLines);
-        }
-      }
-
       this.sendCombat(session, lines.join("\n"));
       broadcast(
         room.id,
@@ -734,17 +706,8 @@ export class CombatSystem {
         session.sessionId,
       );
       this.sendCombatUpdate(session);
-
-      if (session.isDead) {
-        const killer = this.getCombatNpcs(session)[0] ?? npc;
-        this.handlePlayerDeath(session, killer);
-      }
       return;
     }
-
-    // All combat NPCs retaliate
-    const retaliationLines = this.allNpcsRetaliate(session);
-    lines.push("", ...retaliationLines);
 
     this.sendCombat(session, lines.join("\n"));
     broadcast(
@@ -754,11 +717,6 @@ export class CombatSystem {
     );
     this.sendCharacterUpdate(session);
     this.sendCombatUpdate(session);
-
-    if (session.isDead) {
-      const killer = this.getCombatNpcs(session)[0] ?? npc;
-      this.handlePlayerDeath(session, killer);
-    }
   }
 
   // ── Internal ──

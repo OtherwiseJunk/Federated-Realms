@@ -165,8 +165,20 @@ export class CharacterSession {
     return true;
   }
 
-  refreshAp(): void {
-    this.state.currentAp = this.state.maxAp;
+  /**
+   * Regenerate AP by the system's `apRegen` derived-stat formula (issue #24
+   * pulse model). Falls back to 1/tick when the system defines no formula.
+   * Returns true iff currentAp changed.
+   */
+  regenAp(): boolean {
+    if (this.state.currentAp >= this.state.maxAp) return false;
+    const formula = this.formulas.apRegen;
+    const amount = formula
+      ? computeDerivedStats({ apRegen: formula }, this.state.level, this.state.attributes).apRegen
+      : 1;
+    if (amount <= 0) return false;
+    this.state.currentAp = Math.min(this.state.maxAp, this.state.currentAp + amount);
+    return true;
   }
 
   spendAp(amount: number): boolean {

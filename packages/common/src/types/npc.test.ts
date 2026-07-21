@@ -76,3 +76,22 @@ describe("computeNpcMaxHp", () => {
     expect(computeNpcMaxHp(1, { con: 16 })).toBe(18); // 10 + 5 + 3
   });
 });
+
+describe("createNpcInstance attackCooldown", () => {
+  test("defaults attackCooldown to 1 and seeds the swing counter", () => {
+    const npc = createNpcInstance("area:goblin", makeDef(), "area:spawn", attributeDefs);
+    expect(npc.attackCooldown).toBe(1);
+    expect(npc.ticksUntilSwing).toBe(1);
+  });
+
+  test("carries an explicit attackCooldown and seeds the counter to match", () => {
+    const npc = createNpcInstance(
+      "area:tiger",
+      makeDef({ name: "Tiger", attackCooldown: 3 }),
+      "area:spawn",
+      attributeDefs,
+    );
+    expect(npc.attackCooldown).toBe(3);
+    expect(npc.ticksUntilSwing).toBe(3);
+  });
+});

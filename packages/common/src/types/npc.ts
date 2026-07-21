@@ -13,6 +13,10 @@ export interface NpcInstance {
   attributes: Attributes;
   currentHp: number;
   maxHp: number;
+  /** Game ticks between swings in pulse combat (lexicon default 1, resolved here at the spawn boundary). */
+  attackCooldown: number;
+  /** Countdown to this NPC's next swing; reset to attackCooldown on swing and on combat engage. */
+  ticksUntilSwing: number;
 }
 
 /** Compute NPC max HP from level and constitution */
@@ -52,6 +56,7 @@ export function createNpcInstance(
   const level = definition.level ?? 1;
   const attributes = resolveNpcAttributes(attributeDefs, definition.attributes);
   const maxHp = computeNpcMaxHp(level, attributes);
+  const attackCooldown = definition.attackCooldown ?? 1;
 
   return {
     instanceId: generateNpcId(),
@@ -64,5 +69,7 @@ export function createNpcInstance(
     attributes,
     currentHp: maxHp,
     maxHp,
+    attackCooldown,
+    ticksUntilSwing: attackCooldown,
   };
 }

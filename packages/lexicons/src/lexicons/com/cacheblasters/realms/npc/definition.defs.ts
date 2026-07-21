@@ -21,6 +21,11 @@ type Main = {
   level?: number;
 
   /**
+   * Optional pacing hint for pulse-combat systems: game ticks between this NPC's attacks (1 = every tick). Systems with a different combat pacing model may ignore it.
+   */
+  attackCooldown?: number;
+
+  /**
    * Open map of attribute ID -> value, using server's attribute schema
    */
   attributes?: l.LexMap;
@@ -55,6 +60,7 @@ const main = l.record<"any", Main>(
       knownValues: ["hostile", "merchant", "questgiver", "wanderer", "static"];
     }>(),
     level: l.optional(l.integer({ minimum: 1 })),
+    attackCooldown: l.optional(l.withDefault(l.integer({ minimum: 1 }), 1)),
     attributes: l.optional(l.lexMap()),
     dialogue: l.optional(l.lexMap()),
     art: l.optional(l.array(l.string())),
