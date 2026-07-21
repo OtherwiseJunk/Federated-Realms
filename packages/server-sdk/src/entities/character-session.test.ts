@@ -469,6 +469,27 @@ describe("CharacterSession", () => {
       expect(session.state.attributes).toEqual(before);
       expect(session.state.activeEffects).toHaveLength(1);
     });
+
+    test("addEffect applies a debuff immediately and reverses it on expiry", () => {
+      const session = makeSession();
+      const baseDex = session.state.attributes.dex;
+
+      session.addEffect({
+        id: "weakness",
+        name: "Weakness",
+        type: "debuff",
+        attribute: "dex",
+        magnitude: 3,
+        remainingTicks: 2,
+      });
+
+      expect(session.state.attributes.dex).toBe(baseDex - 3);
+      expect(session.state.activeEffects).toHaveLength(1);
+
+      session.tickEffects();
+      session.tickEffects();
+      expect(session.state.attributes.dex).toBe(baseDex);
+    });
   });
 });
 
