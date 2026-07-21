@@ -632,7 +632,7 @@ export class CombatSystem {
       // Simple buff: +magnitude to str for 5 ticks
       lines.push(`${session.name} casts ${spell.name}! A surge of power flows through you.`);
       lines.push(`  +${result.amount} Strength for a short time. (${spell.mpCost} MP spent)`);
-      session.state.activeEffects.push({
+      session.addEffect({
         id: `spell:${spell.name.toLowerCase().replace(/\s+/g, "-")}`,
         name: spell.name,
         type: "buff",
@@ -640,8 +640,6 @@ export class CombatSystem {
         magnitude: result.amount,
         remainingTicks: 5,
       });
-      // Apply immediately
-      session.state.attributes.str += result.amount;
     }
 
     this.sendCombat(session, lines.join("\n"));

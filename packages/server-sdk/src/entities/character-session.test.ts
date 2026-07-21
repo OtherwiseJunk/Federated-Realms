@@ -431,6 +431,44 @@ describe("CharacterSession", () => {
       expect(session.state.activeEffects).toHaveLength(0);
       expect(session.state.attributes.dex).toBe(baseDex);
     });
+
+    test("addEffect applies a buff immediately and registers it for later reversal", () => {
+      const session = makeSession();
+      const baseDex = session.state.attributes.dex;
+
+      session.addEffect({
+        id: "speed-boost",
+        name: "Speed Boost",
+        type: "buff",
+        attribute: "dex",
+        magnitude: 4,
+        remainingTicks: 2,
+      });
+
+      expect(session.state.attributes.dex).toBe(baseDex + 4);
+      expect(session.state.activeEffects).toHaveLength(1);
+
+      // The effect it registered is exactly what tickEffects reverses.
+      session.tickEffects();
+      session.tickEffects();
+      expect(session.state.attributes.dex).toBe(baseDex);
+    });
+
+    test("addEffect with no attribute registers the effect without mutating attributes", () => {
+      const session = makeSession();
+      const before = { ...session.state.attributes };
+
+      session.addEffect({
+        id: "marked",
+        name: "Marked",
+        type: "debuff",
+        magnitude: 0,
+        remainingTicks: 3,
+      });
+
+      expect(session.state.attributes).toEqual(before);
+      expect(session.state.activeEffects).toHaveLength(1);
+    });
   });
 });
 
