@@ -1,11 +1,12 @@
 import type { CharacterProfile, FormulaDef, ItemDefinition } from "@realms/lexicons";
-import type { CharacterState, ItemInstance } from "@realms/common";
+import type { ActiveEffect, CharacterState, ItemInstance } from "@realms/common";
 import {
   profileToState,
   computeDerivedStats,
   withDefaultFormulas,
   addItemToStacks,
   splitItemStack,
+  checkLevelUp,
 } from "@realms/common";
 import type { ServerWebSocket } from "bun";
 import { AttestationTracker } from "../atproto/attestation-tracker.js";
@@ -206,7 +207,7 @@ export class CharacterSession {
   addXp(amount: number): number | null {
     this.state.experience += amount;
 
-    const newLevel = this.checkLevelUp();
+    const newLevel = checkLevelUp(this.state.level, this.state.experience);
     if (newLevel > this.state.level) {
       this.state.level = newLevel;
       this.recalculateDerived();
@@ -216,15 +217,6 @@ export class CharacterSession {
       return newLevel;
     }
     return null;
-  }
-
-  private checkLevelUp(): number {
-    let level = this.state.level;
-    const xpForLevel = (l: number) => l * (l - 1) * 50;
-    while (this.state.experience >= xpForLevel(level + 1)) {
-      level++;
-    }
-    return level;
   }
 
   private recalculateDerived(): void {
@@ -252,6 +244,25 @@ export class CharacterSession {
       if (typeof item.properties?.bonus_ap === "number") ap += item.properties.bonus_ap;
     }
     return { hp, mp, ap };
+  }
+
+  /**
+   * Apply a timed attribute effect (buff/debuff): registers it in
+   * activeEffects and, if it carries an attribute, applies the magnitude
+   * immediately. tickEffects() owns the mirror-image reversal on expiry —
+   * together these are the single owner of the apply/revert invariant
+   * (issue #85; previously callers mutated attributes directly and only the
+   * reversal lived here, so a disconnect mid-effect could leave a base
+   * attribute permanently shifted if the caller's push and mutation ever
+   * drifted apart).
+   */
+  addEffect(effect: ActiveEffect): void {
+    this.state.activeEffects.push(effect);
+    if (effect.attribute) {
+      const current = this.state.attributes[effect.attribute];
+      this.state.attributes[effect.attribute] =
+        effect.type === "buff" ? current + effect.magnitude : current - effect.magnitude;
+    }
   }
 
   tickEffects(): string[] {

@@ -385,6 +385,18 @@ describe("CharacterSession", () => {
       expect(session.state.currentHp).toBe(session.state.maxHp);
       expect(session.state.currentMp).toBe(session.state.maxMp);
     });
+
+    test("addXp uses the same curve as @realms/common's checkLevelUp (issue #85)", () => {
+      const session = makeSession();
+      // Level 1 -> 2 requires xpForLevel(2) = 2*(2-1)*50 = 100 xp.
+      const justUnder = session.addXp(99);
+      expect(justUnder).toBeNull();
+      expect(session.state.level).toBe(1);
+
+      const leveled = session.addXp(1); // total 100, crosses the threshold
+      expect(leveled).toBe(2);
+      expect(session.state.level).toBe(2);
+    });
   });
 
   describe("respawn", () => {
@@ -429,6 +441,65 @@ describe("CharacterSession", () => {
       expired = session.tickEffects();
       expect(expired).toEqual(["Speed Boost"]);
       expect(session.state.activeEffects).toHaveLength(0);
+      expect(session.state.attributes.dex).toBe(baseDex);
+    });
+
+    test("addEffect applies a buff immediately and registers it for later reversal", () => {
+      const session = makeSession();
+      const baseDex = session.state.attributes.dex;
+
+      session.addEffect({
+        id: "speed-boost",
+        name: "Speed Boost",
+        type: "buff",
+        attribute: "dex",
+        magnitude: 4,
+        remainingTicks: 2,
+      });
+
+      expect(session.state.attributes.dex).toBe(baseDex + 4);
+      expect(session.state.activeEffects).toHaveLength(1);
+
+      // The effect it registered is exactly what tickEffects reverses.
+      session.tickEffects();
+      session.tickEffects();
+      expect(session.state.attributes.dex).toBe(baseDex);
+    });
+
+    test("addEffect with no attribute registers the effect without mutating attributes", () => {
+      const session = makeSession();
+      const before = { ...session.state.attributes };
+
+      session.addEffect({
+        id: "marked",
+        name: "Marked",
+        type: "debuff",
+        magnitude: 0,
+        remainingTicks: 3,
+      });
+
+      expect(session.state.attributes).toEqual(before);
+      expect(session.state.activeEffects).toHaveLength(1);
+    });
+
+    test("addEffect applies a debuff immediately and reverses it on expiry", () => {
+      const session = makeSession();
+      const baseDex = session.state.attributes.dex;
+
+      session.addEffect({
+        id: "weakness",
+        name: "Weakness",
+        type: "debuff",
+        attribute: "dex",
+        magnitude: 3,
+        remainingTicks: 2,
+      });
+
+      expect(session.state.attributes.dex).toBe(baseDex - 3);
+      expect(session.state.activeEffects).toHaveLength(1);
+
+      session.tickEffects();
+      session.tickEffects();
       expect(session.state.attributes.dex).toBe(baseDex);
     });
   });
